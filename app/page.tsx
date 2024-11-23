@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { Header } from "@/components/header";
-import { Footer } from "@/components/footer";
 import { ProductForm } from "@/components/product-form";
 import { ProductTable } from "@/components/product-table";
 import { ContentSections } from "@/components/content-sections";
 import { DismissibleTitle } from "@/components/dismissible-title";
+import { ToolFAQ } from "@/components/tool-faq";
+import { Footer } from "@/components/footer";
 import { Product } from "@/types/product";
 
 export default function Home() {
@@ -48,6 +49,7 @@ export default function Home() {
                 />
               </div>
             </div>
+            <ToolFAQ />
           </div>
         </div>
         <div className="container py-12 max-w-5xl mx-auto px-4">
