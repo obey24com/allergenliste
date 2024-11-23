@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AllergenCheckbox } from "@/components/allergen-checkbox";
 import { Product } from "@/types/product";
@@ -55,56 +54,54 @@ export function ProductForm({ onSubmit, initialData }: ProductFormProps) {
   };
 
   return (
-    <Card className="p-6">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <Label htmlFor="name" className="text-base font-medium">Produktname</Label>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="z.B. Wiener Schnitzel"
-            className="mt-2"
-          />
-        </div>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div>
+        <Label htmlFor="name" className="text-base font-medium">Produktname</Label>
+        <Input
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="z.B. Wiener Schnitzel"
+          className="mt-2"
+        />
+      </div>
 
-        <Tabs defaultValue="allergens" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="allergens">Allergene</TabsTrigger>
-            <TabsTrigger value="additives">Zusatzstoffe</TabsTrigger>
-          </TabsList>
-          <TabsContent value="allergens" className="mt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {Object.entries(ALLERGENS).map(([key, label]) => (
-                <AllergenCheckbox
-                  key={key}
-                  id={`allergen-${key}`}
-                  label={label}
-                  checked={allergens.includes(key)}
-                  onChange={() => toggleAllergen(key)}
-                />
-              ))}
-            </div>
-          </TabsContent>
-          <TabsContent value="additives" className="mt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {Object.entries(ADDITIVES).map(([key, label]) => (
-                <AllergenCheckbox
-                  key={key}
-                  id={`additive-${key}`}
-                  label={label}
-                  checked={additives.includes(key)}
-                  onChange={() => toggleAdditive(key)}
-                />
-              ))}
-            </div>
-          </TabsContent>
-        </Tabs>
+      <Tabs defaultValue="allergens" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="allergens">Allergene</TabsTrigger>
+          <TabsTrigger value="additives">Zusatzstoffe</TabsTrigger>
+        </TabsList>
+        <TabsContent value="allergens" className="mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {Object.entries(ALLERGENS).map(([key, label]) => (
+              <AllergenCheckbox
+                key={key}
+                id={`allergen-${key}`}
+                label={label}
+                checked={allergens.includes(key)}
+                onChange={() => toggleAllergen(key)}
+              />
+            ))}
+          </div>
+        </TabsContent>
+        <TabsContent value="additives" className="mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {Object.entries(ADDITIVES).map(([key, label]) => (
+              <AllergenCheckbox
+                key={key}
+                id={`additive-${key}`}
+                label={label}
+                checked={additives.includes(key)}
+                onChange={() => toggleAdditive(key)}
+              />
+            ))}
+          </div>
+        </TabsContent>
+      </Tabs>
 
-        <Button type="submit" className="w-full">
-          {initialData ? "Produkt aktualisieren" : "Produkt hinzufügen"}
-        </Button>
-      </form>
-    </Card>
+      <Button type="submit" className="w-full">
+        {initialData ? "Produkt aktualisieren" : "Produkt hinzufügen"}
+      </Button>
+    </form>
   );
 }
