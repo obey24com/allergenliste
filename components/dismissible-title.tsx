@@ -10,7 +10,7 @@ export function DismissibleTitle() {
   if (!isVisible) return null;
 
   return (
-    <div className="flex items-center justify-between bg-primary/5 rounded-lg p-4 mb-6">
+    <div className="flex items-center justify-between rounded-lg p-4 mb-6">
       <h1 className="text-2xl font-bold text-primary">Kostenlos Allergenliste erstellen</h1>
       <Button
         variant="ghost"
