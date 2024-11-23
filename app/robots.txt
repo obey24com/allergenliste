@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://allergenliste.obey24.com/sitemap.xml
