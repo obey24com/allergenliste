@@ -34,15 +34,25 @@ export default function Home() {
         onLogoChange={setLogo}
         products={products}
       />
-      <main className="container py-6 space-y-6 max-w-5xl mx-auto px-4 flex-1">
-        <DismissibleTitle />
-        <ProductForm onSubmit={handleProductSubmit} />
-        <ProductTable 
-          products={products}
-          onDelete={handleProductDelete}
-          onUpdate={handleProductUpdate}
-        />
-        <ContentSections />
+      <main className="flex-1">
+        <div className="bg-gradient-to-b from-primary/5 to-background border-b">
+          <div className="container py-8 space-y-6 max-w-5xl mx-auto px-4">
+            <DismissibleTitle />
+            <div className="backdrop-blur-sm bg-background/50 rounded-xl border shadow-lg p-6">
+              <ProductForm onSubmit={handleProductSubmit} />
+              <div className="mt-6">
+                <ProductTable 
+                  products={products}
+                  onDelete={handleProductDelete}
+                  onUpdate={handleProductUpdate}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="container py-12 max-w-5xl mx-auto px-4">
+          <ContentSections />
+        </div>
       </main>
       <Footer />
     </div>
