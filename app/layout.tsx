@@ -6,8 +6,8 @@ import { CookieBanner } from '@/components/cookie-banner';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Allergenliste erstellen - Kostenlos & Professionell | Für Gastronomie & Restaurants',
-  description: 'Erstellen Sie kostenlos eine professionelle Allergenliste für Ihre Speisekarte. PDF & Excel Export, LMIV-konform, mit Logo-Upload. Ideal für Restaurants & Gastronomie.',
+  title: 'Kostenlos Allergenliste erstellen - Kostenlos & Professionell | Für Gastronomie & Restaurants',
+  description: 'Allergene & Zusatzstoffe Generator. Erstellen Sie kostenlos eine professionelle Allergenliste für Ihre Speisekarte. PDF & Excel Export, mit Logo-Upload. Ideal für Restaurants & Gastronomie.',
 };
 
 export default function RootLayout({
