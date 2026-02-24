@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
 import { CookieBanner } from '@/components/cookie-banner';
+import { ChunkErrorHandler } from '@/components/chunk-error-handler';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -19,6 +20,7 @@ export default function RootLayout({
   return (
     <html lang="de">
       <body className={inter.className}>
+        <ChunkErrorHandler />
         {children}
         <CookieBanner />
         <Analytics />
