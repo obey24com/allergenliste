@@ -8,7 +8,7 @@ export function ToolFAQ() {
     <section className="space-y-4 mt-12">
       <div className="flex items-center gap-2">
         <HelpCircle className="h-5 w-5 text-primary" />
-        <h2 className="text-2xl font-semibold">So funktioniert's</h2>
+        <h2 className="text-2xl font-semibold">So funktioniert es</h2>
       </div>
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="p-6 relative overflow-hidden group hover:shadow-lg transition-shadow">
@@ -21,8 +21,8 @@ export function ToolFAQ() {
               <h3 className="font-semibold text-lg">1. Logo hochladen</h3>
             </div>
             <p className="text-muted-foreground leading-relaxed">
-              Klicke oben links auf "Logo hochladen", um dein Firmenlogo für die PDF-Ausgabe einzufügen. 
-              Unterstützt werden JPG und PNG bis 2MB.
+              Klicke oben links auf Logo hochladen, um dein Firmenlogo für die PDF-Ausgabe einzufügen. 
+              Unterstützt werden JPG, PNG und WEBP bis 2MB.
             </p>
           </div>
         </Card>
@@ -39,11 +39,15 @@ export function ToolFAQ() {
             <ul className="space-y-2 text-muted-foreground">
               <li className="flex items-start gap-2">
                 <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
+                Optional: Bestehende Speisekarte per CSV/Text importieren
+              </li>
+              <li className="flex items-start gap-2">
+                <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
                 Produktname wie auf der Speisekarte eingeben
               </li>
               <li className="flex items-start gap-2">
                 <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
-                Zwischen "Allergene" und "Zusatzstoffe" wechseln
+                Zwischen Allergene und Zusatzstoffe wechseln
               </li>
               <li className="flex items-start gap-2">
                 <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
@@ -51,7 +55,7 @@ export function ToolFAQ() {
               </li>
               <li className="flex items-start gap-2">
                 <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
-                "Produkt hinzufügen" klicken
+                Produkt hinzufügen klicken
               </li>
             </ul>
           </div>
@@ -86,7 +90,8 @@ export function ToolFAQ() {
               <li className="flex items-start gap-2">
                 <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
                 <span>
-                  <strong>PDF Export:</strong> Professionelles Dokument mit Logo
+                  <strong>PDF Export:</strong> Mit Logo, Datum, Exportmodus und optionaler
+                  Kürzel-Legende
                 </span>
               </li>
               <li className="flex items-start gap-2">
@@ -106,21 +111,21 @@ export function ToolFAQ() {
           <div>
             <p className="font-medium">🔒 Werden meine Daten gespeichert?</p>
             <p className="mt-1 text-muted-foreground">
-              Nein, alle Eingaben werden nur lokal in deinem Browser verarbeitet und 
-              nach dem Schließen der Seite gelöscht.
+              Ja, lokal in deinem Browser. Deine Liste bleibt nach Reload/Neustart
+              erhalten und kann jederzeit weiterbearbeitet werden.
             </p>
           </div>
           <div>
             <p className="font-medium">💾 Kann ich die Liste später bearbeiten?</p>
             <p className="mt-1 text-muted-foreground">
-              Nutze den CSV-Export für eine editierbare Version, die du jederzeit in 
-              Excel öffnen und anpassen kannst.
+              Ja. Du kannst direkt in der App weiterarbeiten oder per CSV exportieren
+              und extern bearbeiten.
             </p>
           </div>
           <div>
             <p className="font-medium">🖼️ Welche Logos kann ich verwenden?</p>
             <p className="mt-1 text-muted-foreground">
-              JPG oder PNG bis 2MB. Das Logo wird automatisch für die PDF-Ausgabe 
+              JPG, PNG oder WEBP bis 2MB. Das Logo wird automatisch für die PDF-Ausgabe 
               optimiert.
             </p>
           </div>
@@ -129,6 +134,13 @@ export function ToolFAQ() {
             <p className="mt-1 text-muted-foreground">
               Ja, komplett kostenlos und ohne Registrierung. Erstelle beliebig viele 
               Listen und Exporte.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium">📥 Welche Importformate werden unterstützt?</p>
+            <p className="mt-1 text-muted-foreground">
+              CSV-Dateien mit den Spalten Name, Allergene, Zusatzstoffe sowie Copy-Paste
+              aus Excel/Google Sheets.
             </p>
           </div>
         </div>

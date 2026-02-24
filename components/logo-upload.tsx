@@ -13,8 +13,9 @@ export function LogoUpload({ logoUrl, onLogoChange }: LogoUploadProps) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('Bitte wählen Sie eine Bilddatei aus.');
+    const allowedFormats = ["image/png", "image/jpeg", "image/webp"];
+    if (!allowedFormats.includes(file.type)) {
+      alert("Bitte verwenden Sie PNG, JPG oder WEBP.");
       return;
     }
 
@@ -52,7 +53,7 @@ export function LogoUpload({ logoUrl, onLogoChange }: LogoUploadProps) {
         <div className="flex items-center">
           <input
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/webp"
             onChange={handleFileChange}
             className="hidden"
             id="logo-upload"

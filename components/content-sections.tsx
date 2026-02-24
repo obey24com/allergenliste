@@ -131,6 +131,7 @@ export function ContentSections() {
             </p>
             <h3 className="mt-4 font-semibold">So funktioniert es:</h3>
             <ul className="mt-2 space-y-2 list-disc list-inside text-muted-foreground">
+              <li>Importiere bestehende Speisekartenzeilen per CSV oder Copy-Paste.</li>
               <li>Wähle die verwendeten Lebensmittel aus.</li>
               <li>Ergänze Allergene und Zusatzstoffe aus der vorgegebenen Auswahl.</li>
               <li>Lade die fertige Liste als PDF herunter und teile sie mit deinem Team oder deinen Kunden.</li>
@@ -138,6 +139,7 @@ export function ContentSections() {
             <h3 className="mt-4 font-semibold">Vorteile unseres Tools:</h3>
             <ul className="mt-2 space-y-2 list-disc list-inside text-muted-foreground">
               <li>Zeitersparnis durch einfache Bedienung.</li>
+              <li>Automatische lokale Speicherung für nahtloses Weiterarbeiten.</li>
               <li>Immer aktuelle und vollständige Listen.</li>
               <li>Professionelles Design für den sofortigen Einsatz.</li>
             </ul>
@@ -159,7 +161,7 @@ export function ContentSections() {
               </div>
               <div>
                 <h3 className="font-semibold">2. Wie erkenne ich Zusatzstoffe auf Verpackungen?</h3>
-                <p className="mt-2 text-muted-foreground">Zusatzstoffe werden mit ihrem Klassennamen und einer E-Nummer angegeben, z. B. „Antioxidationsmittel: E300".</p>
+                <p className="mt-2 text-muted-foreground">Zusatzstoffe werden mit ihrem Klassennamen und einer E-Nummer angegeben, z. B. Antioxidationsmittel: E300.</p>
               </div>
               <div>
                 <h3 className="font-semibold">3. Kann ich eine Allergenliste auch für Restaurants verwenden?</h3>

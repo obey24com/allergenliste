@@ -9,7 +9,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, GripVertical } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Pencil, Trash2, GripVertical, Copy } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,8 +19,12 @@ import {
 } from "@/components/ui/dialog";
 import { useState } from "react";
 import { Product } from "@/types/product";
-import { ALLERGENS, ADDITIVES } from "@/lib/constants";
 import { ProductForm } from "@/components/product-form";
+import {
+  additiveLabelFromKey,
+  allergenLabelFromKey,
+  hasMissingDeclarations,
+} from "@/lib/product-helpers";
 import {
   DndContext,
   closestCenter,
@@ -43,15 +48,17 @@ interface ProductTableProps {
   onDelete: (id: string) => void;
   onUpdate: (product: Product) => void;
   onReorder: (products: Product[]) => void;
+  onDuplicate: (product: Product) => void;
 }
 
 interface SortableRowProps {
   product: Product;
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
+  onDuplicate: (product: Product) => void;
 }
 
-function SortableRow({ product, onEdit, onDelete }: SortableRowProps) {
+function SortableRow({ product, onEdit, onDelete, onDuplicate }: SortableRowProps) {
   const {
     attributes,
     listeners,
@@ -69,6 +76,7 @@ function SortableRow({ product, onEdit, onDelete }: SortableRowProps) {
     opacity: isDragging ? 0.5 : 1,
     touchAction: 'none',
   } as React.CSSProperties;
+  const hasMissingData = hasMissingDeclarations(product.allergens, product.additives);
 
   return (
     <TableRow ref={setNodeRef} style={style}>
@@ -83,16 +91,29 @@ function SortableRow({ product, onEdit, onDelete }: SortableRowProps) {
           <GripVertical className="h-4 w-4" />
         </Button>
       </TableCell>
-      <TableCell className="font-medium">{product.name}</TableCell>
       <TableCell>
-        {product.allergens
-          .map((key) => ALLERGENS[key as keyof typeof ALLERGENS])
-          .join(", ")}
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{product.name}</span>
+          {hasMissingData && (
+            <Badge variant="outline" className="border-amber-300 text-amber-700">
+              Prüfen
+            </Badge>
+          )}
+        </div>
       </TableCell>
       <TableCell>
-        {product.additives
-          .map((key) => ADDITIVES[key as keyof typeof ADDITIVES])
-          .join(", ")}
+        {product.allergens.length > 0 ? (
+          product.allergens.map((key) => allergenLabelFromKey(key)).join(", ")
+        ) : (
+          <span className="text-muted-foreground">Keine Angabe</span>
+        )}
+      </TableCell>
+      <TableCell>
+        {product.additives.length > 0 ? (
+          product.additives.map((key) => additiveLabelFromKey(key)).join(", ")
+        ) : (
+          <span className="text-muted-foreground">Keine Angabe</span>
+        )}
       </TableCell>
       <TableCell>
         <div className="flex gap-1">
@@ -102,6 +123,14 @@ function SortableRow({ product, onEdit, onDelete }: SortableRowProps) {
             onClick={() => onEdit(product)}
           >
             <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onDuplicate(product)}
+            title="Duplizieren"
+          >
+            <Copy className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
@@ -116,7 +145,13 @@ function SortableRow({ product, onEdit, onDelete }: SortableRowProps) {
   );
 }
 
-export function ProductTable({ products, onDelete, onUpdate, onReorder }: ProductTableProps) {
+export function ProductTable({
+  products,
+  onDelete,
+  onUpdate,
+  onReorder,
+  onDuplicate,
+}: ProductTableProps) {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const sensors = useSensors(
@@ -136,7 +171,9 @@ export function ProductTable({ products, onDelete, onUpdate, onReorder }: Produc
     if (over && active.id !== over.id) {
       const oldIndex = products.findIndex((p) => p.id === active.id);
       const newIndex = products.findIndex((p) => p.id === over.id);
-      onReorder(arrayMove(products, oldIndex, newIndex));
+      if (oldIndex >= 0 && newIndex >= 0) {
+        onReorder(arrayMove(products, oldIndex, newIndex));
+      }
     }
   };
 
@@ -159,12 +196,12 @@ export function ProductTable({ products, onDelete, onUpdate, onReorder }: Produc
                 <TableHead>Name</TableHead>
                 <TableHead>Allergene</TableHead>
                 <TableHead>Zusatzstoffe</TableHead>
-                <TableHead className="w-[120px]">Aktionen</TableHead>
+                <TableHead className="w-[170px]">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <SortableContext
-                items={products}
+                items={products.map((product) => product.id)}
                 strategy={verticalListSortingStrategy}
               >
                 {products.map((product) => (
@@ -173,6 +210,7 @@ export function ProductTable({ products, onDelete, onUpdate, onReorder }: Produc
                     product={product}
                     onEdit={setEditingProduct}
                     onDelete={onDelete}
+                    onDuplicate={onDuplicate}
                   />
                 ))}
               </SortableContext>
@@ -189,6 +227,9 @@ export function ProductTable({ products, onDelete, onUpdate, onReorder }: Produc
           {editingProduct && (
             <ProductForm
               initialData={editingProduct}
+              existingProductNames={products
+                .filter((product) => product.id !== editingProduct.id)
+                .map((product) => product.name)}
               onSubmit={(updatedProduct) => {
                 onUpdate(updatedProduct);
                 setEditingProduct(null);
