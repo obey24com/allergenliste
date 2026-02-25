@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import Image from "next/image";
 
 interface LogoUploadProps {
   logoUrl: string | null;
@@ -15,12 +17,22 @@ export function LogoUpload({ logoUrl, onLogoChange }: LogoUploadProps) {
 
     const allowedFormats = ["image/png", "image/jpeg", "image/webp"];
     if (!allowedFormats.includes(file.type)) {
-      alert("Bitte verwenden Sie PNG, JPG oder WEBP.");
+      toast({
+        title: "Ungültiges Dateiformat",
+        description: "Bitte verwenden Sie PNG, JPG oder WEBP.",
+        variant: "destructive",
+      });
+      event.target.value = "";
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('Die Datei ist zu groß. Maximale Größe ist 2MB.');
+      toast({
+        title: "Datei zu groß",
+        description: "Maximale Dateigröße ist 2 MB.",
+        variant: "destructive",
+      });
+      event.target.value = "";
       return;
     }
 
@@ -28,6 +40,10 @@ export function LogoUpload({ logoUrl, onLogoChange }: LogoUploadProps) {
     reader.onload = (e) => {
       const result = e.target?.result as string;
       onLogoChange(result);
+      toast({
+        title: "Logo gespeichert",
+        description: "Das Logo wird für den nächsten PDF-Export verwendet.",
+      });
     };
     reader.readAsDataURL(file);
   };
@@ -36,10 +52,13 @@ export function LogoUpload({ logoUrl, onLogoChange }: LogoUploadProps) {
     <div className="flex items-center gap-4">
       {logoUrl ? (
         <div className="flex items-center gap-4">
-          <img 
-            src={logoUrl} 
-            alt="Restaurant Logo" 
+          <Image
+            src={logoUrl}
+            alt="Restaurant Logo"
+            width={192}
+            height={48}
             className="h-12 w-auto object-contain"
+            unoptimized
           />
           <Button 
             variant="outline" 

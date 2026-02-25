@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { AllergenCheckbox } from "@/components/allergen-checkbox";
 import { Product } from "@/types/product";
 import { ALLERGENS, ADDITIVES } from "@/lib/constants";
 import { hasMissingDeclarations } from "@/lib/product-helpers";
+import { Loader2, Sparkles } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 interface ProductFormProps {
   onSubmit: (product: Product) => void;
@@ -22,10 +25,13 @@ export function ProductForm({
   initialData,
   existingProductNames = [],
 }: ProductFormProps) {
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(initialData?.name ?? "");
   const [allergens, setAllergens] = useState<string[]>(initialData?.allergens ?? []);
   const [additives, setAdditives] = useState<string[]>(initialData?.additives ?? []);
   const [keepSelection, setKeepSelection] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestionReasoning, setSuggestionReasoning] = useState<string | null>(null);
 
   const normalizedName = name.trim().toLowerCase();
   const normalizedInitialName = initialData?.name.trim().toLowerCase() ?? "";
@@ -40,6 +46,59 @@ export function ProductForm({
     });
 
   const hasNoDeclarations = hasMissingDeclarations(allergens, additives);
+
+  const handleAISuggestion = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName || isSuggesting) {
+      return;
+    }
+
+    setIsSuggesting(true);
+    setSuggestionReasoning(null);
+
+    try {
+      const response = await fetch("/api/suggest-allergens", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          productName: trimmedName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Die KI-Antwort konnte nicht geladen werden.");
+      }
+
+      const data = (await response.json()) as {
+        allergens?: string[];
+        additives?: string[];
+        reasoning?: string;
+      };
+
+      const suggestedAllergens = Array.isArray(data.allergens) ? data.allergens : [];
+      const suggestedAdditives = Array.isArray(data.additives) ? data.additives : [];
+
+      setAllergens(suggestedAllergens);
+      setAdditives(suggestedAdditives);
+      setSuggestionReasoning(data.reasoning?.trim() || "Keine zusätzliche Begründung.");
+
+      toast({
+        title: "KI-Vorschlag geladen",
+        description: "Bitte prüfen Sie die vorausgewählten Angaben vor dem Speichern.",
+      });
+    } catch (error) {
+      console.error("KI-Vorschlag fehlgeschlagen:", error);
+      toast({
+        title: "KI-Vorschlag fehlgeschlagen",
+        description: "Bitte versuchen Sie es erneut oder wählen Sie die Angaben manuell aus.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +118,8 @@ export function ProductForm({
         setAllergens([]);
         setAdditives([]);
       }
+      setSuggestionReasoning(null);
+      requestAnimationFrame(() => nameInputRef.current?.focus());
     }
   };
 
@@ -81,9 +142,28 @@ export function ProductForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <Label htmlFor="name" className="text-base font-medium">Produktname</Label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Label htmlFor="name" className="text-base font-medium">
+            Produktname
+          </Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleAISuggestion()}
+            disabled={!name.trim() || isSuggesting}
+          >
+            {isSuggesting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="mr-2 h-4 w-4" />
+            )}
+            {isSuggesting ? "Analysiere..." : "KI-Vorschlag"}
+          </Button>
+        </div>
         <Input
           id="name"
+          ref={nameInputRef}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="z.B. Wiener Schnitzel"
@@ -93,8 +173,22 @@ export function ProductForm({
 
       <Tabs defaultValue="allergens" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="allergens">Allergene</TabsTrigger>
-          <TabsTrigger value="additives">Zusatzstoffe</TabsTrigger>
+          <TabsTrigger value="allergens" className="gap-2">
+            Allergene
+            {allergens.length > 0 && (
+              <Badge variant="secondary" className="px-2 py-0 text-[10px] leading-5">
+                {allergens.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="additives" className="gap-2">
+            Zusatzstoffe
+            {additives.length > 0 && (
+              <Badge variant="secondary" className="px-2 py-0 text-[10px] leading-5">
+                {additives.length}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="allergens" className="mt-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -124,7 +218,16 @@ export function ProductForm({
         </TabsContent>
       </Tabs>
 
-      <div className="space-y-2">
+      {suggestionReasoning && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+          <p className="font-medium text-primary">KI-Vorschlag geladen</p>
+          <p className="mt-1 text-muted-foreground">
+            Bitte prüfen Sie die Vorauswahl: {suggestionReasoning}
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-2" aria-live="polite">
         {hasDuplicateName && (
           <p className="text-sm text-amber-700">
             Hinweis: Ein Produkt mit diesem Namen ist bereits vorhanden.

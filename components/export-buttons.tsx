@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Product } from "@/types/product";
-import { FileDown } from "lucide-react";
+import { FileDown, Loader2 } from "lucide-react";
 import Papa from "papaparse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -23,6 +23,17 @@ import {
   formatAllergenValues,
   hasMissingDeclarations,
 } from "@/lib/product-helpers";
+import { toast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ExportButtonsProps {
   products: Product[];
@@ -95,6 +106,10 @@ const getExportTimestamp = () => {
 
 export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
   const [exportMode, setExportMode] = useState<ExportMode>("cleartext");
+  const [isCsvExporting, setIsCsvExporting] = useState(false);
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
+  const [showMissingDeclarationsDialog, setShowMissingDeclarationsDialog] =
+    useState(false);
 
   const hasProductsWithMissingDeclarations = useMemo(
     () =>
@@ -104,194 +119,229 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
     [products]
   );
 
-  const handleCSVExport = () => {
-    const data = products.map((product) => ({
-      Name: product.name,
-      Allergene: formatAllergenValues(product.allergens, exportMode),
-      Zusatzstoffe: formatAdditiveValues(product.additives, exportMode),
-    }));
+  const handleCSVExport = async () => {
+    setIsCsvExporting(true);
+    try {
+      const data = products.map((product) => ({
+        Name: product.name,
+        Allergene: formatAllergenValues(product.allergens, exportMode),
+        Zusatzstoffe: formatAdditiveValues(product.additives, exportMode),
+      }));
 
-    if (exportMode === "codes") {
-      data.push({ Name: "", Allergene: "", Zusatzstoffe: "" });
-      data.push({
-        Name: "Legende Allergene",
-        Allergene: ALLERGEN_ENTRIES.map(([key, label]) => `${key.toUpperCase()}=${label}`).join(
-          " | "
-        ),
-        Zusatzstoffe: "",
+      if (exportMode === "codes") {
+        data.push({ Name: "", Allergene: "", Zusatzstoffe: "" });
+        data.push({
+          Name: "Legende Allergene",
+          Allergene: ALLERGEN_ENTRIES.map(([key, label]) => `${key.toUpperCase()}=${label}`).join(
+            " | "
+          ),
+          Zusatzstoffe: "",
+        });
+        data.push({
+          Name: "Legende Zusatzstoffe",
+          Allergene: "",
+          Zusatzstoffe: ADDITIVE_ENTRIES.map(([key, label]) => `${key}=${label}`).join(" | "),
+        });
+      }
+
+      const csv = Papa.unparse(data);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute("download", "allergenliste.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      toast({
+        title: "CSV exportiert",
+        description: "Die CSV-Datei wurde heruntergeladen.",
       });
-      data.push({
-        Name: "Legende Zusatzstoffe",
-        Allergene: "",
-        Zusatzstoffe: ADDITIVE_ENTRIES.map(([key, label]) => `${key}=${label}`).join(" | "),
+    } catch (error) {
+      console.error("CSV-Export fehlgeschlagen:", error);
+      toast({
+        title: "CSV-Export fehlgeschlagen",
+        description: "Bitte versuchen Sie es erneut.",
+        variant: "destructive",
       });
+    } finally {
+      setIsCsvExporting(false);
     }
-
-    const csv = Papa.unparse(data);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", "allergenliste.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
   };
 
-  const handlePDFExport = async () => {
-    if (
-      hasProductsWithMissingDeclarations &&
-      !window.confirm(
-        "Es gibt Produkte ohne Allergene/Zusatzstoffe. Trotzdem als PDF exportieren?"
-      )
-    ) {
-      return;
-    }
+  const performPDFExport = async () => {
+    setIsPdfExporting(true);
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const exportTimestamp = getExportTimestamp();
+      let startY = 16;
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const exportTimestamp = getExportTimestamp();
-    let startY = 16;
-
-    doc.setFontSize(14);
-    doc.setTextColor(33, 37, 41);
-    doc.text("Allergen- und Zusatzstoffliste", pageWidth / 2, startY, {
-      align: "center",
-    });
-    startY += 6;
-
-    doc.setFontSize(9);
-    doc.setTextColor(100, 116, 139);
-    doc.text(
-      `Erstellt am: ${exportTimestamp} | Modus: ${
-        exportMode === "cleartext" ? "Klartext" : "Kürzel"
-      } | Version: ${exportVersion}`,
-      pageWidth / 2,
-      startY,
-      { align: "center" }
-    );
-    startY += 8;
-
-    if (logoUrl) {
-      try {
-        const image = await toPdfImage(logoUrl);
-        const aspectRatio = image.width / image.height;
-        const maxWidth = 50;
-        const width = Math.min(maxWidth, image.width);
-        const height = width / aspectRatio;
-
-        doc.addImage(
-          image.dataUrl,
-          image.format,
-          (pageWidth - width) / 2,
-          startY,
-          width,
-          height
-        );
-        startY += height + 8;
-      } catch (error) {
-        console.error("Logo konnte nicht in PDF übernommen werden:", error);
-      }
-    }
-
-    doc.setFontSize(10);
-    doc.setTextColor(128, 128, 128);
-    doc.text(
-      "Lebensmittel/Speisen sind mit nachfolgenden Zusatzstoffen und Allergenen hergestellt:",
-      pageWidth / 2,
-      startY,
-      { align: "center" }
-    );
-    startY += 6;
-
-    const tableData = products.map((product) => [
-      product.name,
-      formatAllergenValues(product.allergens, exportMode) || "Keine Angabe",
-      formatAdditiveValues(product.additives, exportMode) || "Keine Angabe",
-    ]);
-
-    autoTable(doc, {
-      head: [
-        [
-          "Name",
-          exportMode === "codes" ? "Allergene (A-N)" : "Allergene",
-          exportMode === "codes" ? "Zusatzstoffe (1-10)" : "Zusatzstoffe",
-        ],
-      ],
-      body: tableData,
-      startY: startY + 5,
-      styles: {
-        fontSize: 9,
-        cellPadding: 4,
-      },
-      headStyles: {
-        fillColor: [249, 250, 251],
-        textColor: [71, 85, 105],
-        fontStyle: "bold",
-      },
-      alternateRowStyles: {
-        fillColor: [249, 250, 251],
-      },
-      theme: "grid",
-      margin: { left: 14, right: 14 },
-    });
-
-    let legendStartY =
-      (
-        doc as jsPDF & {
-          lastAutoTable?: {
-            finalY: number;
-          };
-        }
-      ).lastAutoTable?.finalY ?? startY + 30;
-
-    if (exportMode === "codes") {
-      legendStartY += 8;
+      doc.setFontSize(14);
       doc.setTextColor(33, 37, 41);
-      doc.setFontSize(11);
-      doc.text("Legende", 14, legendStartY);
+      doc.text("Allergen- und Zusatzstoffliste", pageWidth / 2, startY, {
+        align: "center",
+      });
+      startY += 6;
+
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        `Erstellt am: ${exportTimestamp} | Modus: ${
+          exportMode === "cleartext" ? "Klartext" : "Kürzel"
+        } | Version: ${exportVersion}`,
+        pageWidth / 2,
+        startY,
+        { align: "center" }
+      );
+      startY += 8;
+
+      if (logoUrl) {
+        try {
+          const image = await toPdfImage(logoUrl);
+          const aspectRatio = image.width / image.height;
+          const maxWidth = 50;
+          const width = Math.min(maxWidth, image.width);
+          const height = width / aspectRatio;
+
+          doc.addImage(
+            image.dataUrl,
+            image.format,
+            (pageWidth - width) / 2,
+            startY,
+            width,
+            height
+          );
+          startY += height + 8;
+        } catch (error) {
+          console.error("Logo konnte nicht in PDF übernommen werden:", error);
+        }
+      }
+
+      doc.setFontSize(10);
+      doc.setTextColor(128, 128, 128);
+      doc.text(
+        "Lebensmittel/Speisen sind mit nachfolgenden Zusatzstoffen und Allergenen hergestellt:",
+        pageWidth / 2,
+        startY,
+        { align: "center" }
+      );
+      startY += 6;
+
+      const tableData = products.map((product) => [
+        product.name,
+        formatAllergenValues(product.allergens, exportMode) || "Keine Angabe",
+        formatAdditiveValues(product.additives, exportMode) || "Keine Angabe",
+      ]);
 
       autoTable(doc, {
-        head: [["Allergen-Code", "Bedeutung"]],
-        body: Object.entries(ALLERGENS).map(([key, label]) => [key.toUpperCase(), label]),
-        startY: legendStartY + 3,
+        head: [
+          [
+            "Name",
+            exportMode === "codes" ? "Allergene (A-N)" : "Allergene",
+            exportMode === "codes" ? "Zusatzstoffe (1-10)" : "Zusatzstoffe",
+          ],
+        ],
+        body: tableData,
+        startY: startY + 5,
         styles: {
-          fontSize: 8,
-          cellPadding: 2,
+          fontSize: 9,
+          cellPadding: 4,
+        },
+        headStyles: {
+          fillColor: [249, 250, 251],
+          textColor: [71, 85, 105],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 251],
         },
         theme: "grid",
         margin: { left: 14, right: 14 },
       });
 
-      legendStartY =
+      let legendStartY =
         (
           doc as jsPDF & {
             lastAutoTable?: {
               finalY: number;
             };
           }
-        ).lastAutoTable?.finalY ?? legendStartY + 20;
+        ).lastAutoTable?.finalY ?? startY + 30;
 
-      autoTable(doc, {
-        head: [["Zusatzstoff-Code", "Bedeutung"]],
-        body: Object.entries(ADDITIVES).map(([key, label]) => [key, label]),
-        startY: legendStartY + 5,
-        styles: {
-          fontSize: 8,
-          cellPadding: 2,
-        },
-        theme: "grid",
-        margin: { left: 14, right: 14 },
+      if (exportMode === "codes") {
+        legendStartY += 8;
+        doc.setTextColor(33, 37, 41);
+        doc.setFontSize(11);
+        doc.text("Legende", 14, legendStartY);
+
+        autoTable(doc, {
+          head: [["Allergen-Code", "Bedeutung"]],
+          body: Object.entries(ALLERGENS).map(([key, label]) => [key.toUpperCase(), label]),
+          startY: legendStartY + 3,
+          styles: {
+            fontSize: 8,
+            cellPadding: 2,
+          },
+          theme: "grid",
+          margin: { left: 14, right: 14 },
+        });
+
+        legendStartY =
+          (
+            doc as jsPDF & {
+              lastAutoTable?: {
+                finalY: number;
+              };
+            }
+          ).lastAutoTable?.finalY ?? legendStartY + 20;
+
+        autoTable(doc, {
+          head: [["Zusatzstoff-Code", "Bedeutung"]],
+          body: Object.entries(ADDITIVES).map(([key, label]) => [key, label]),
+          startY: legendStartY + 5,
+          styles: {
+            fontSize: 8,
+            cellPadding: 2,
+          },
+          theme: "grid",
+          margin: { left: 14, right: 14 },
+        });
+      }
+
+      doc.save("allergenliste.pdf");
+      toast({
+        title: "PDF exportiert",
+        description: "Die PDF-Datei wurde heruntergeladen.",
       });
+    } catch (error) {
+      console.error("PDF-Export fehlgeschlagen:", error);
+      toast({
+        title: "PDF-Export fehlgeschlagen",
+        description: "Bitte versuchen Sie es erneut.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPdfExporting(false);
     }
-
-    doc.save("allergenliste.pdf");
   };
 
+  const handlePDFExport = () => {
+    if (hasProductsWithMissingDeclarations) {
+      setShowMissingDeclarationsDialog(true);
+      return;
+    }
+
+    void performPDFExport();
+  };
+
+  const isExporting = isCsvExporting || isPdfExporting;
+
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <>
+      <div className="flex flex-wrap items-center justify-end gap-2">
       <Select value={exportMode} onValueChange={(value) => setExportMode(value as ExportMode)}>
-        <SelectTrigger className="h-9 w-[170px]">
+        <SelectTrigger className="h-9 w-[170px]" disabled={isExporting}>
           <SelectValue placeholder="Exportmodus" />
         </SelectTrigger>
         <SelectContent>
@@ -302,26 +352,56 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
       <Button
         variant="outline"
         size="sm"
-        onClick={handleCSVExport}
-        disabled={products.length === 0}
+        onClick={() => void handleCSVExport()}
+        disabled={products.length === 0 || isExporting}
       >
-        <FileDown className="mr-2 h-4 w-4" />
-        CSV Export
+        {isCsvExporting ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <FileDown className="mr-2 h-4 w-4" />
+        )}
+        {isCsvExporting ? "Exportiere..." : "CSV Export"}
       </Button>
       <Button
         variant="outline"
         size="sm"
         onClick={handlePDFExport}
-        disabled={products.length === 0}
+        disabled={products.length === 0 || isExporting}
       >
-        <FileDown className="mr-2 h-4 w-4" />
-        PDF Export
+        {isPdfExporting ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <FileDown className="mr-2 h-4 w-4" />
+        )}
+        {isPdfExporting ? "Exportiere..." : "PDF Export"}
       </Button>
       {hasProductsWithMissingDeclarations && (
         <p className="basis-full text-right text-xs text-amber-700">
           Hinweis: Mindestens ein Produkt hat noch keine Kennzeichnung.
         </p>
       )}
-    </div>
+      </div>
+
+      <AlertDialog
+        open={showMissingDeclarationsDialog}
+        onOpenChange={setShowMissingDeclarationsDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Trotzdem exportieren?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mindestens ein Produkt hat keine Allergene oder Zusatzstoffe. Sie können den
+              Export trotzdem fortsetzen und die Liste später ergänzen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void performPDFExport()}>
+              Trotzdem exportieren
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

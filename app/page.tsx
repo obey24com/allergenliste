@@ -1,16 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/header";
 import { ProductForm } from "@/components/product-form";
 import { ProductTable } from "@/components/product-table";
+import { ProductFilter } from "@/components/product-filter";
+import { OnboardingBanner } from "@/components/onboarding-banner";
 import { ContentSections } from "@/components/content-sections";
 import { ToolFAQ } from "@/components/tool-faq";
 import { Footer } from "@/components/footer";
 import { Product } from "@/types/product";
+import { ALLERGENS } from "@/lib/constants";
+import { hasMissingDeclarations } from "@/lib/product-helpers";
+import { toast } from "@/hooks/use-toast";
 
 const PRODUCTS_STORAGE_KEY = "gastrohelper-products-v1";
 const LOGO_STORAGE_KEY = "gastrohelper-logo-v1";
+const VISITED_STORAGE_KEY = "gastrohelper-visited";
+const BACKUP_REMINDER_STORAGE_KEY = "gastrohelper-backup-reminder-v1";
+
+const DEMO_PRODUCTS: Array<Omit<Product, "id">> = [
+  {
+    name: "Wiener Schnitzel",
+    allergens: ["a", "c", "g"],
+    additives: [],
+  },
+  {
+    name: "Caesar Salad",
+    allergens: ["a", "c", "d", "g", "j"],
+    additives: ["1"],
+  },
+  {
+    name: "Tomatensuppe",
+    allergens: ["i"],
+    additives: ["2"],
+  },
+  {
+    name: "Hausdessert",
+    allergens: ["a", "c", "g", "h"],
+    additives: ["9"],
+  },
+];
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
@@ -38,6 +68,10 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [logo, setLogo] = useState<string | null>(null);
   const [storageLoaded, setStorageLoaded] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [missingOnly, setMissingOnly] = useState(false);
+  const [allergenFilter, setAllergenFilter] = useState("all");
 
   useEffect(() => {
     try {
@@ -57,6 +91,9 @@ export default function Home() {
       if (storedLogo) {
         setLogo(storedLogo);
       }
+
+      const hasVisited = localStorage.getItem(VISITED_STORAGE_KEY);
+      setShowOnboarding(!hasVisited);
     } catch (error) {
       console.error("Konnte gespeicherte Daten nicht laden:", error);
     } finally {
@@ -84,6 +121,21 @@ export default function Home() {
     localStorage.removeItem(LOGO_STORAGE_KEY);
   }, [logo, storageLoaded]);
 
+  useEffect(() => {
+    if (!storageLoaded) {
+      return;
+    }
+
+    const hasReminder = localStorage.getItem(BACKUP_REMINDER_STORAGE_KEY);
+    if (products.length > 10 && !hasReminder) {
+      toast({
+        title: "Backup empfohlen",
+        description: "Exportieren Sie Ihre Liste als CSV, um eine Sicherung zu haben.",
+      });
+      localStorage.setItem(BACKUP_REMINDER_STORAGE_KEY, "1");
+    }
+  }, [products.length, storageLoaded]);
+
   const handleProductSubmit = (product: Product) => {
     setProducts((prev) => [...prev, { ...product, name: product.name.trim() }]);
   };
@@ -110,6 +162,35 @@ export default function Home() {
     setProducts(reorderedProducts);
   };
 
+  const handleBulkDelete = (ids: string[]) => {
+    if (ids.length === 0) {
+      return;
+    }
+
+    const idSet = new Set(ids);
+    setProducts((prev) => prev.filter((product) => !idSet.has(product.id)));
+  };
+
+  const handleBulkAddAllergen = (ids: string[], allergenKey: string) => {
+    if (ids.length === 0 || !(allergenKey in ALLERGENS)) {
+      return;
+    }
+
+    const idSet = new Set(ids);
+    setProducts((prev) =>
+      prev.map((product) => {
+        if (!idSet.has(product.id) || product.allergens.includes(allergenKey)) {
+          return product;
+        }
+
+        return {
+          ...product,
+          allergens: [...product.allergens, allergenKey],
+        };
+      })
+    );
+  };
+
   const handleProductDuplicate = (productToDuplicate: Product) => {
     setProducts((prev) => {
       const existingNames = new Set(prev.map((product) => product.name.toLowerCase()));
@@ -133,6 +214,64 @@ export default function Home() {
     });
   };
 
+  const handleDismissOnboarding = () => {
+    setShowOnboarding(false);
+    localStorage.setItem(VISITED_STORAGE_KEY, "1");
+  };
+
+  const handleLoadDemoProducts = () => {
+    setProducts((prev) => {
+      const existingNames = new Set(prev.map((product) => product.name.toLowerCase()));
+
+      const preparedDemos = DEMO_PRODUCTS.map((demoProduct) => {
+        let nextName = demoProduct.name;
+        let counter = 2;
+        while (existingNames.has(nextName.toLowerCase())) {
+          nextName = `${demoProduct.name} ${counter}`;
+          counter += 1;
+        }
+        existingNames.add(nextName.toLowerCase());
+
+        return {
+          id: crypto.randomUUID(),
+          name: nextName,
+          allergens: demoProduct.allergens,
+          additives: demoProduct.additives,
+        } satisfies Product;
+      });
+
+      return [...prev, ...preparedDemos];
+    });
+
+    handleDismissOnboarding();
+    toast({
+      title: "Beispieldaten geladen",
+      description: "Sie können die Produkte jetzt direkt bearbeiten oder exportieren.",
+    });
+  };
+
+  const filteredProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return products.filter((product) => {
+      if (query && !product.name.toLowerCase().includes(query)) {
+        return false;
+      }
+
+      if (missingOnly && !hasMissingDeclarations(product.allergens, product.additives)) {
+        return false;
+      }
+
+      if (allergenFilter !== "all" && !product.allergens.includes(allergenFilter)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [products, searchQuery, missingOnly, allergenFilter]);
+
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 || missingOnly || allergenFilter !== "all";
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header
@@ -145,18 +284,47 @@ export default function Home() {
         <div className="bg-gradient-to-b from-primary/5 to-background border-b">
           <div className="container py-8 space-y-6 max-w-5xl mx-auto px-4">
             <div className="backdrop-blur-sm bg-background/50 rounded-xl border shadow-lg p-6">
+              {showOnboarding && (
+                <div className="mb-6">
+                  <OnboardingBanner
+                    onDismiss={handleDismissOnboarding}
+                    onLoadDemoProducts={handleLoadDemoProducts}
+                  />
+                </div>
+              )}
+
               <ProductForm
                 onSubmit={handleProductSubmit}
                 existingProductNames={products.map((product) => product.name)}
               />
-              <div className="mt-6">
+
+              <div className="mt-6 space-y-4">
+                {products.length > 0 && (
+                  <ProductFilter
+                    searchQuery={searchQuery}
+                    onSearchQueryChange={setSearchQuery}
+                    missingOnly={missingOnly}
+                    onMissingOnlyChange={setMissingOnly}
+                    allergenFilter={allergenFilter}
+                    onAllergenFilterChange={setAllergenFilter}
+                    totalCount={products.length}
+                    filteredCount={filteredProducts.length}
+                  />
+                )}
+
                 <ProductTable
-                  products={products}
+                  products={filteredProducts}
                   onDelete={handleProductDelete}
                   onUpdate={handleProductUpdate}
                   onReorder={handleProductReorder}
                   onDuplicate={handleProductDuplicate}
+                  onBulkDelete={handleBulkDelete}
+                  onBulkAddAllergen={handleBulkAddAllergen}
+                  isReorderEnabled={!hasActiveFilters}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Ihre Daten werden lokal im Browser gespeichert.
+                </p>
               </div>
             </div>
             <ToolFAQ />
