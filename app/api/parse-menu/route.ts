@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRequire } from "module";
 import OpenAI from "openai";
 import { ADDITIVES, ALLERGENS } from "@/lib/constants";
 import {
@@ -67,27 +66,6 @@ const normalizeProducts = (
   return normalized;
 };
 
-const parsePdfToText = async (pdfFile: File): Promise<string> => {
-  const require = createRequire(import.meta.url);
-  const { PDFParse } = require("pdf-parse") as {
-    PDFParse: new (options: { data: ArrayBuffer }) => {
-      getText: () => Promise<{ text: string }>;
-      destroy: () => Promise<void>;
-    };
-  };
-
-  const parser = new PDFParse({
-    data: await pdfFile.arrayBuffer(),
-  });
-
-  try {
-    const result = await parser.getText();
-    return result.text.trim();
-  } finally {
-    await parser.destroy();
-  }
-};
-
 export async function POST(request: NextRequest) {
   const openai = getOpenAIClient();
   if (!openai) {
@@ -118,24 +96,24 @@ export async function POST(request: NextRequest) {
 
     if (!textInput && !imageFile && !pdfFile) {
       return NextResponse.json(
-        { error: "Bitte senden Sie Text, ein Bild oder eine PDF." },
+        { error: "Bitte senden Sie Text oder ein Bild." },
+        { status: 400 }
+      );
+    }
+
+    if (pdfFile) {
+      return NextResponse.json(
+        {
+          error:
+            "PDF-Dateien können in dieser Umgebung leider nicht analysiert werden. Bitte nutzen Sie stattdessen ein Foto der Speisekarte (JPG/PNG) oder fügen Sie den Text ein.",
+        },
         { status: 400 }
       );
     }
 
     const warnings: string[] = [];
-    let extractedPdfText = "";
-
-    if (pdfFile) {
-      extractedPdfText = await parsePdfToText(pdfFile);
-      if (!extractedPdfText) {
-        warnings.push("Die PDF enthielt keinen auslesbaren Text.");
-      }
-    }
-
-    const combinedText = [textInput, extractedPdfText].filter(Boolean).join("\n\n");
-    const isTruncated = combinedText.length > MAX_TEXT_LENGTH;
-    const trimmedText = isTruncated ? combinedText.slice(0, MAX_TEXT_LENGTH) : combinedText;
+    const isTruncated = textInput.length > MAX_TEXT_LENGTH;
+    const trimmedText = isTruncated ? textInput.slice(0, MAX_TEXT_LENGTH) : textInput;
     if (isTruncated) {
       warnings.push("Sehr lange Eingabe wurde für die Analyse gekürzt.");
     }
