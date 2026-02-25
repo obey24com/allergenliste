@@ -4,7 +4,7 @@ import { ChangeEvent, useMemo, useState } from "react";
 import Papa from "papaparse";
 import { Loader2, Sparkles, Upload } from "lucide-react";
 import { Product } from "@/types/product";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -31,6 +31,10 @@ import { cn } from "@/lib/utils";
 
 interface ImportProductsProps {
   onImport: (products: Product[]) => void;
+  triggerLabel?: string;
+  triggerVariant?: ButtonProps["variant"];
+  triggerSize?: ButtonProps["size"];
+  triggerClassName?: string;
 }
 
 interface ParsedImportResult {
@@ -168,7 +172,13 @@ const parseRowsWithoutHeader = (rows: string[][]) => {
   return { products, warnings };
 };
 
-export function ImportProducts({ onImport }: ImportProductsProps) {
+export function ImportProducts({
+  onImport,
+  triggerLabel = "Import",
+  triggerVariant = "outline",
+  triggerSize = "sm",
+  triggerClassName,
+}: ImportProductsProps) {
   const [open, setOpen] = useState(false);
   const [pasteInput, setPasteInput] = useState("");
   const [aiTextInput, setAiTextInput] = useState("");
@@ -438,9 +448,14 @@ export function ImportProducts({ onImport }: ImportProductsProps) {
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button
+        variant={triggerVariant}
+        size={triggerSize}
+        className={triggerClassName}
+        onClick={() => setOpen(true)}
+      >
         <Upload className="mr-2 h-4 w-4" />
-        Import
+        {triggerLabel}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-xl">

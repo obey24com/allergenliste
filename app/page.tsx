@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/header";
+import { LogoUpload } from "@/components/logo-upload";
+import { ImportProducts } from "@/components/import-products";
 import { ProductForm } from "@/components/product-form";
 import { ProductTable } from "@/components/product-table";
 import { ProductFilter } from "@/components/product-filter";
@@ -274,12 +276,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <Header
-        logoUrl={logo}
-        onLogoChange={setLogo}
-        products={products}
-        onImportProducts={handleProductsImport}
-      />
+      <Header logoUrl={logo} products={products} />
       <main className="flex-1">
         <div className="bg-gradient-to-b from-primary/5 to-background border-b">
           <div className="container py-8 space-y-6 max-w-5xl mx-auto px-4">
@@ -292,6 +289,33 @@ export default function Home() {
                   />
                 </div>
               )}
+
+              <div className="mb-6 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/15 via-primary/10 to-background p-5 shadow-sm">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                      Schnellstart
+                    </p>
+                    <h2 className="text-lg font-semibold leading-tight">
+                      Speisekarte importieren statt alles manuell einzugeben
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      CSV, Copy-Paste oder KI-Import mit Bild/PDF. So sind viele Produkte in wenigen
+                      Minuten erfasst.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ImportProducts
+                      onImport={handleProductsImport}
+                      triggerLabel="Speisekarte importieren"
+                      triggerVariant="default"
+                      triggerSize="default"
+                      triggerClassName="h-10 px-5 font-semibold shadow-sm"
+                    />
+                    <LogoUpload logoUrl={logo} onLogoChange={setLogo} />
+                  </div>
+                </div>
+              </div>
 
               <ProductForm
                 onSubmit={handleProductSubmit}
