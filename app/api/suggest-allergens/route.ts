@@ -12,9 +12,14 @@ import { checkRateLimit } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  return new OpenAI({ apiKey });
+};
 
 const toList = (entries: Record<string, string>, transformKey?: (value: string) => string) =>
   Object.entries(entries)
@@ -34,7 +39,8 @@ const getClientIdentifier = (request: NextRequest) => {
 };
 
 export async function POST(request: NextRequest) {
-  if (!process.env.OPENAI_API_KEY) {
+  const openai = getOpenAIClient();
+  if (!openai) {
     return NextResponse.json(
       { error: "OPENAI_API_KEY ist nicht gesetzt." },
       { status: 500 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createRequire } from "module";
 import OpenAI from "openai";
-import { PDFParse } from "pdf-parse";
 import { ADDITIVES, ALLERGENS } from "@/lib/constants";
 import {
   aiMenuParseJsonSchema,
@@ -13,9 +13,22 @@ import { checkRateLimit } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  return new OpenAI({ apiKey });
+};
+
+const require = createRequire(import.meta.url);
+const { PDFParse } = require("pdf-parse") as {
+  PDFParse: new (options: { data: ArrayBuffer }) => {
+    getText: () => Promise<{ text: string }>;
+    destroy: () => Promise<void>;
+  };
+};
 
 const toList = (entries: Record<string, string>, transformKey?: (value: string) => string) =>
   Object.entries(entries)
@@ -76,7 +89,8 @@ const parsePdfToText = async (pdfFile: File) => {
 };
 
 export async function POST(request: NextRequest) {
-  if (!process.env.OPENAI_API_KEY) {
+  const openai = getOpenAIClient();
+  if (!openai) {
     return NextResponse.json(
       { error: "OPENAI_API_KEY ist nicht gesetzt." },
       { status: 500 }
