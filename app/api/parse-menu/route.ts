@@ -22,14 +22,6 @@ const getOpenAIClient = () => {
   return new OpenAI({ apiKey });
 };
 
-const require = createRequire(import.meta.url);
-const { PDFParse } = require("pdf-parse") as {
-  PDFParse: new (options: { data: ArrayBuffer }) => {
-    getText: () => Promise<{ text: string }>;
-    destroy: () => Promise<void>;
-  };
-};
-
 const toList = (entries: Record<string, string>, transformKey?: (value: string) => string) =>
   Object.entries(entries)
     .map(([key, label]) => `${transformKey ? transformKey(key) : key}: ${label}`)
@@ -75,7 +67,15 @@ const normalizeProducts = (
   return normalized;
 };
 
-const parsePdfToText = async (pdfFile: File) => {
+const parsePdfToText = async (pdfFile: File): Promise<string> => {
+  const require = createRequire(import.meta.url);
+  const { PDFParse } = require("pdf-parse") as {
+    PDFParse: new (options: { data: ArrayBuffer }) => {
+      getText: () => Promise<{ text: string }>;
+      destroy: () => Promise<void>;
+    };
+  };
+
   const parser = new PDFParse({
     data: await pdfFile.arrayBuffer(),
   });
