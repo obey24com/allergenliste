@@ -29,6 +29,11 @@ const toList = (entries: Record<string, string>, transformKey?: (value: string) 
 const allergenList = toList(ALLERGENS, (key) => key.toUpperCase());
 const additiveList = toList(ADDITIVES);
 const MAX_TEXT_LENGTH = 18_000;
+const MAX_FILE_SIZE_BYTES = 12 * 1024 * 1024;
+const OCR_MODEL = "gpt-4.1-mini";
+const PARSE_MODEL = "gpt-5.2";
+const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const SUPPORTED_PDF_TYPES = new Set(["application/pdf"]);
 
 const getClientIdentifier = (request: NextRequest) => {
   const forwardedFor = request.headers.get("x-forwarded-for");
@@ -66,6 +71,63 @@ const normalizeProducts = (
   return normalized;
 };
 
+const fileToDataUrl = async (file: File) => {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return `data:${file.type};base64,${buffer.toString("base64")}`;
+};
+
+const extractMenuTextFromFile = async ({
+  openai,
+  file,
+}: {
+  openai: OpenAI;
+  file: File;
+}) => {
+  const fileDataUrl = await fileToDataUrl(file);
+
+  const content: Array<
+    | { type: "input_text"; text: string }
+    | { type: "input_image"; image_url: string; detail: "high" }
+    | { type: "input_file"; filename: string; file_data: string }
+  > = [
+    {
+      type: "input_text",
+      text: `Extrahiere den Speisekarten-Inhalt möglichst vollständig als reinen Fließtext.
+- Liste Positionen zeilenweise.
+- Behalte Produktnamen, Zutatenhinweise und Kennzeichnungen bei.
+- Ignoriere dekorative Elemente.
+- Antworte nur mit dem extrahierten Text, ohne JSON, ohne Erklärungen.`,
+    },
+  ];
+
+  if (SUPPORTED_PDF_TYPES.has(file.type)) {
+    content.push({
+      type: "input_file",
+      filename: file.name || "menu.pdf",
+      file_data: fileDataUrl,
+    });
+  } else {
+    content.push({
+      type: "input_image",
+      image_url: fileDataUrl,
+      detail: "high",
+    });
+  }
+
+  const response = await openai.responses.create({
+    model: OCR_MODEL,
+    max_output_tokens: 4_000,
+    input: [
+      {
+        role: "user",
+        content,
+      },
+    ],
+  });
+
+  return response.output_text.trim();
+};
+
 export async function POST(request: NextRequest) {
   const openai = getOpenAIClient();
   if (!openai) {
@@ -91,29 +153,74 @@ export async function POST(request: NextRequest) {
     const pdf = formData.get("pdf");
 
     const textInput = typeof rawText === "string" ? rawText.trim() : "";
-    const imageFile = image instanceof File ? image : null;
-    const pdfFile = pdf instanceof File ? pdf : null;
+    const imageFile = image instanceof File && image.size > 0 ? image : null;
+    const pdfFile = pdf instanceof File && pdf.size > 0 ? pdf : null;
+    const uploadedFile = imageFile ?? pdfFile;
 
-    if (!textInput && !imageFile && !pdfFile) {
+    if (!textInput && !uploadedFile) {
       return NextResponse.json(
-        { error: "Bitte senden Sie Text oder ein Bild." },
+        { error: "Bitte senden Sie Text oder laden Sie ein Bild/PDF hoch." },
         { status: 400 }
       );
     }
 
-    if (pdfFile) {
+    if (imageFile && !SUPPORTED_IMAGE_TYPES.has(imageFile.type)) {
       return NextResponse.json(
         {
           error:
-            "PDF-Dateien können in dieser Umgebung leider nicht analysiert werden. Bitte nutzen Sie stattdessen ein Foto der Speisekarte (JPG/PNG) oder fügen Sie den Text ein.",
+            "Nicht unterstütztes Bildformat. Bitte PNG, JPG/JPEG oder WEBP verwenden.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (pdfFile && !SUPPORTED_PDF_TYPES.has(pdfFile.type)) {
+      return NextResponse.json(
+        {
+          error: "Bitte eine gültige PDF-Datei hochladen.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (uploadedFile && uploadedFile.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json(
+        {
+          error: "Datei ist zu groß. Bitte maximal 12 MB hochladen.",
         },
         { status: 400 }
       );
     }
 
     const warnings: string[] = [];
-    const isTruncated = textInput.length > MAX_TEXT_LENGTH;
-    const trimmedText = isTruncated ? textInput.slice(0, MAX_TEXT_LENGTH) : textInput;
+    let combinedText = textInput;
+
+    if (uploadedFile) {
+      const extractedText = await extractMenuTextFromFile({
+        openai,
+        file: uploadedFile,
+      });
+
+      if (extractedText) {
+        combinedText = [textInput, extractedText].filter(Boolean).join("\n\n");
+        warnings.push(
+          SUPPORTED_PDF_TYPES.has(uploadedFile.type)
+            ? "PDF wurde per OCR analysiert."
+            : "Bild wurde per OCR analysiert."
+        );
+      } else if (!textInput) {
+        return NextResponse.json(
+          {
+            error:
+              "Kein lesbarer Text in der Datei gefunden. Bitte besseres Bild/PDF verwenden oder Text einfügen.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const isTruncated = combinedText.length > MAX_TEXT_LENGTH;
+    const trimmedText = isTruncated ? combinedText.slice(0, MAX_TEXT_LENGTH) : combinedText;
     if (isTruncated) {
       warnings.push("Sehr lange Eingabe wurde für die Analyse gekürzt.");
     }
@@ -140,7 +247,7 @@ ${trimmedText || "Kein zusätzlicher Text übergeben."}
 `;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.2",
+      model: PARSE_MODEL,
       temperature: 0.1,
       response_format: {
         type: "json_schema",
@@ -151,28 +258,10 @@ ${trimmedText || "Kein zusätzlicher Text übergeben."}
           role: "system",
           content: instructions,
         },
-        imageFile
-          ? {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `${userText}\nZusätzlich wurde ein Menübild hochgeladen.`,
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:${imageFile.type};base64,${Buffer.from(
-                      await imageFile.arrayBuffer()
-                    ).toString("base64")}`,
-                  },
-                },
-              ],
-            }
-          : {
-              role: "user",
-              content: userText,
-            },
+        {
+          role: "user",
+          content: userText,
+        },
       ],
     });
 
@@ -188,8 +277,9 @@ ${trimmedText || "Kein zusätzlicher Text übergeben."}
     });
   } catch (error) {
     console.error("Fehler in /api/parse-menu:", error);
+    const message = error instanceof Error ? error.message : "Unbekannter Fehler";
     return NextResponse.json(
-      { error: "Die Speisekarte konnte nicht analysiert werden." },
+      { error: `Die Speisekarte konnte nicht analysiert werden: ${message}` },
       { status: 500 }
     );
   }
