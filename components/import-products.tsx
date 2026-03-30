@@ -40,7 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 
 interface ImportProductsProps {
-  onImport: (products: Product[]) => void;
+  onImport: (products: Product[]) => ImportSummary;
   triggerLabel?: string;
   triggerVariant?: ButtonProps["variant"];
   triggerSize?: ButtonProps["size"];
@@ -50,6 +50,12 @@ interface ImportProductsProps {
 interface ParsedImportResult {
   products: Product[];
   warnings: string[];
+}
+
+export interface ImportSummary {
+  added: number;
+  updated: number;
+  total: number;
 }
 
 const NAME_HEADERS = ["name", "produkt", "produktname", "gericht", "speise"];
@@ -99,6 +105,22 @@ const toStringValue = (value: unknown) =>
   typeof value === "string" ? value : value == null ? "" : String(value);
 
 const sortedUnique = (values: string[]) => Array.from(new Set(values)).sort();
+
+const formatImportSummary = ({ added, updated, total }: ImportSummary) => {
+  if (total === 0) {
+    return "Keine importierbaren Produkte gefunden.";
+  }
+
+  if (added > 0 && updated > 0) {
+    return `${total} Produkte verarbeitet: ${added} hinzugefügt, ${updated} aktualisiert.`;
+  }
+
+  if (updated > 0) {
+    return `${updated} Produkte aktualisiert.`;
+  }
+
+  return `${added} Produkte importiert.`;
+};
 
 const summarizeSelection = (
   selectedKeys: string[],
@@ -263,8 +285,8 @@ export function ImportProducts({
 
   const applyImportResult = (result: ParsedImportResult) => {
     if (result.products.length > 0) {
-      onImport(result.products);
-      setStatusMessage(`${result.products.length} Produkte importiert.`);
+      const summary = onImport(result.products);
+      setStatusMessage(formatImportSummary(summary));
     } else {
       setStatusMessage("Keine importierbaren Produkte gefunden.");
     }
@@ -463,8 +485,8 @@ export function ImportProducts({
       return;
     }
 
-    onImport(selectedProducts);
-    setStatusMessage(`${selectedProducts.length} Produkte importiert.`);
+    const summary = onImport(selectedProducts);
+    setStatusMessage(formatImportSummary(summary));
     setAiPreviewProducts([]);
     setSelectedAiProductIds(new Set());
     setAiTextInput("");

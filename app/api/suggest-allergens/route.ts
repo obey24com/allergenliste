@@ -102,7 +102,7 @@ ${allergenList}
 Zusatzstoffe (1-15):
 ${additiveList}
 
-Rechtlich relevante Hinweise (H1-H8):
+Rechtlich relevante Hinweise (H1-H9):
 ${legalNoticeList}
 
 Gib wahrscheinliche Allergene, Zusatzstoffe und Hinweise für das Produkt zurück.

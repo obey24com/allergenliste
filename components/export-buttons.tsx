@@ -254,7 +254,7 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
             "Name",
             exportMode === "codes" ? "Allergene (A-N)" : "Allergene",
             exportMode === "codes" ? "Zusatzstoffe (1-15)" : "Zusatzstoffe",
-            exportMode === "codes" ? "Pflicht-Hinweise (H1-H8)" : "Pflicht-Hinweise",
+            exportMode === "codes" ? "Pflicht-Hinweise (H1-H9)" : "Pflicht-Hinweise",
           ],
         ],
         body: tableData,

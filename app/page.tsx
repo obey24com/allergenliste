@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/header";
 import { LogoUpload } from "@/components/logo-upload";
-import { ImportProducts } from "@/components/import-products";
+import { ImportProducts, type ImportSummary } from "@/components/import-products";
 import { ProductForm } from "@/components/product-form";
 import { ProductTable } from "@/components/product-table";
 import { ProductFilter } from "@/components/product-filter";
@@ -15,6 +15,17 @@ import { Product } from "@/types/product";
 import { ALLERGENS } from "@/lib/constants";
 import { hasMissingDeclarations } from "@/lib/product-helpers";
 import { toast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const PRODUCTS_STORAGE_KEY = "gastrohelper-products-v1";
 const LOGO_STORAGE_KEY = "gastrohelper-logo-v1";
@@ -51,6 +62,43 @@ const DEMO_PRODUCTS: Array<Omit<Product, "id">> = [
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
+const normalizeProductName = (value: string) => value.trim().toLowerCase();
+
+const mergeImportedProducts = (
+  existingProducts: Product[],
+  importedProducts: Product[]
+): { mergedProducts: Product[]; summary: ImportSummary } => {
+  const remainingImports = new Map(
+    importedProducts.map((product) => [normalizeProductName(product.name), product])
+  );
+
+  const mergedProducts = existingProducts.map((product) => {
+    const normalizedName = normalizeProductName(product.name);
+    const importedProduct = remainingImports.get(normalizedName);
+
+    if (!importedProduct) {
+      return product;
+    }
+
+    remainingImports.delete(normalizedName);
+    return {
+      ...importedProduct,
+      id: product.id,
+    };
+  });
+
+  const addedProducts = Array.from(remainingImports.values());
+
+  return {
+    mergedProducts: [...mergedProducts, ...addedProducts],
+    summary: {
+      added: addedProducts.length,
+      updated: importedProducts.length - addedProducts.length,
+      total: importedProducts.length,
+    },
+  };
+};
+
 const toStoredProduct = (value: unknown): Product | null => {
   if (!value || typeof value !== "object") {
     return null;
@@ -79,6 +127,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [missingOnly, setMissingOnly] = useState(false);
   const [allergenFilter, setAllergenFilter] = useState("all");
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -161,8 +210,37 @@ export default function Home() {
     setProducts((prev) => prev.filter((product) => product.id !== id));
   };
 
-  const handleProductsImport = (importedProducts: Product[]) => {
-    setProducts((prev) => [...prev, ...importedProducts]);
+  const handleProductsImport = (importedProducts: Product[]): ImportSummary => {
+    const uniqueImports = new Map<string, Product>();
+
+    importedProducts.forEach((product) => {
+      const normalizedName = normalizeProductName(product.name);
+      if (!normalizedName) {
+        return;
+      }
+
+      uniqueImports.set(normalizedName, {
+        ...product,
+        name: product.name.trim(),
+      });
+    });
+
+    const deduplicatedImports = Array.from(uniqueImports.values());
+    const { mergedProducts, summary } = mergeImportedProducts(products, deduplicatedImports);
+
+    setProducts(mergedProducts);
+
+    toast({
+      title: summary.updated > 0 ? "Import aktualisiert" : "Import abgeschlossen",
+      description:
+        summary.added > 0 && summary.updated > 0
+          ? `${summary.added} Produkte hinzugefügt, ${summary.updated} Produkte aktualisiert.`
+          : summary.updated > 0
+            ? `${summary.updated} bestehende Produkte wurden mit der neuen Analyse überschrieben.`
+            : `${summary.added} neue Produkte wurden hinzugefügt.`,
+    });
+
+    return summary;
   };
 
   const handleProductReorder = (reorderedProducts: Product[]) => {
@@ -224,6 +302,26 @@ export default function Home() {
   const handleDismissOnboarding = () => {
     setShowOnboarding(false);
     localStorage.setItem(VISITED_STORAGE_KEY, "1");
+  };
+
+  const handleResetAll = () => {
+    setProducts([]);
+    setLogo(null);
+    setSearchQuery("");
+    setMissingOnly(false);
+    setAllergenFilter("all");
+    setShowOnboarding(true);
+    setIsResetDialogOpen(false);
+
+    localStorage.removeItem(PRODUCTS_STORAGE_KEY);
+    localStorage.removeItem(LOGO_STORAGE_KEY);
+    localStorage.removeItem(BACKUP_REMINDER_STORAGE_KEY);
+    localStorage.removeItem(VISITED_STORAGE_KEY);
+
+    toast({
+      title: "Liste zurückgesetzt",
+      description: "Alle Produkte und das Logo wurden entfernt. Sie können mit einer neuen Liste beginnen.",
+    });
   };
 
   const handleLoadDemoProducts = () => {
@@ -322,6 +420,15 @@ export default function Home() {
                       triggerClassName="h-10 px-5 font-semibold shadow-sm"
                     />
                     <LogoUpload logoUrl={logo} onLogoChange={setLogo} />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 border-destructive/30 px-4 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                      disabled={products.length === 0 && !logo}
+                      onClick={() => setIsResetDialogOpen(true)}
+                    >
+                      Alles zurücksetzen
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -367,6 +474,23 @@ export default function Home() {
           <ContentSections />
         </div>
       </main>
+      <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Liste vollständig zurücksetzen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Alle Produkte, das Logo und die lokal gespeicherten Daten werden entfernt.
+              Danach starten Sie mit einer neuen leeren Liste.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetAll}>
+              Alles zurücksetzen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Footer />
     </div>
   );

@@ -42,4 +42,5 @@ export const LEGAL_NOTICES = {
   h6: "übermäßiger Verzehr kann insbesondere bei Personen mit Nierenerkrankungen die Gesundheit beeinträchtigen",
   h7: "erhöhter Koffeingehalt. Für Kinder und schwangere oder stillende Frauen nicht empfohlen",
   h8: "enthält Koffein. Für Kinder und schwangere Frauen nicht empfohlen",
+  h9: "koffeinhaltig",
 } as const;

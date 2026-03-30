@@ -44,6 +44,7 @@ export const LEGAL_NOTICE_KEY_VALUES = [
   "h6",
   "h7",
   "h8",
+  "h9",
 ] as const;
 
 export type AllergenKey = (typeof ALLERGEN_KEY_VALUES)[number];
