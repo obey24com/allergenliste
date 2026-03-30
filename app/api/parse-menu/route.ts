@@ -11,6 +11,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// PDF OCR plus the follow-up structured parse can exceed Vercel's default function duration.
+export const maxDuration = 60;
 
 const getOpenAIClient = () => {
   const apiKey = process.env.OPENAI_API_KEY;
