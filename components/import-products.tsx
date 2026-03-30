@@ -650,6 +650,10 @@ export function ImportProducts({
                       Ausgewählt: {aiFile.name}
                     </p>
                   )}
+                  <p className="text-xs text-muted-foreground">
+                    Text-PDFs werden direkt gelesen. Gescannte PDFs bitte als Bild hochladen
+                    oder den Text einfügen.
+                  </p>
                 </div>
                 <Button
                   onClick={() => void handleAIAnalyze()}

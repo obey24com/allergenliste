@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createRequire } from "module";
 import OpenAI from "openai";
 import { ADDITIVES, ALLERGENS, LEGAL_NOTICES } from "@/lib/constants";
 import {
@@ -14,6 +15,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // PDF OCR plus the follow-up structured parse can exceed Vercel's default function duration.
 export const maxDuration = 60;
+
+const require = createRequire(import.meta.url);
+const { PDFParse } = require("pdf-parse") as {
+  PDFParse: new (options: { data: Uint8Array }) => {
+    getText: () => Promise<{ text: string }>;
+    destroy: () => Promise<void>;
+  };
+};
 
 const getOpenAIClient = () => {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -82,7 +91,7 @@ const fileToDataUrl = async (file: File) => {
   return `data:${file.type};base64,${buffer.toString("base64")}`;
 };
 
-const extractMenuTextFromFile = async ({
+const extractMenuTextFromImage = async ({
   openai,
   file,
 }: {
@@ -94,7 +103,6 @@ const extractMenuTextFromFile = async ({
   const content: Array<
     | { type: "input_text"; text: string }
     | { type: "input_image"; image_url: string; detail: "high" }
-    | { type: "input_file"; filename: string; file_data: string }
   > = [
     {
       type: "input_text",
@@ -106,19 +114,11 @@ const extractMenuTextFromFile = async ({
     },
   ];
 
-  if (SUPPORTED_PDF_TYPES.has(file.type)) {
-    content.push({
-      type: "input_file",
-      filename: file.name || "menu.pdf",
-      file_data: fileDataUrl,
-    });
-  } else {
-    content.push({
-      type: "input_image",
-      image_url: fileDataUrl,
-      detail: "high",
-    });
-  }
+  content.push({
+    type: "input_image",
+    image_url: fileDataUrl,
+    detail: "high",
+  });
 
   const response = await openai.responses.create({
     model: OCR_MODEL,
@@ -132,6 +132,17 @@ const extractMenuTextFromFile = async ({
   });
 
   return response.output_text.trim();
+};
+
+const extractMenuTextFromPdf = async (file: File) => {
+  const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) });
+
+  try {
+    const result = await parser.getText();
+    return result.text.trim();
+  } finally {
+    await parser.destroy();
+  }
 };
 
 export async function POST(request: NextRequest) {
@@ -202,23 +213,26 @@ export async function POST(request: NextRequest) {
     let combinedText = textInput;
 
     if (uploadedFile) {
-      const extractedText = await extractMenuTextFromFile({
-        openai,
-        file: uploadedFile,
-      });
+      const extractedText = SUPPORTED_PDF_TYPES.has(uploadedFile.type)
+        ? await extractMenuTextFromPdf(uploadedFile)
+        : await extractMenuTextFromImage({
+            openai,
+            file: uploadedFile,
+          });
 
       if (extractedText) {
         combinedText = [textInput, extractedText].filter(Boolean).join("\n\n");
         warnings.push(
           SUPPORTED_PDF_TYPES.has(uploadedFile.type)
-            ? "PDF wurde per OCR analysiert."
+            ? "PDF-Text wurde direkt aus der Datei extrahiert."
             : "Bild wurde per OCR analysiert."
         );
       } else if (!textInput) {
         return NextResponse.json(
           {
-            error:
-              "Kein lesbarer Text in der Datei gefunden. Bitte besseres Bild/PDF verwenden oder Text einfügen.",
+            error: SUPPORTED_PDF_TYPES.has(uploadedFile.type)
+              ? "Dieses PDF enthält keinen eingebetteten Text. Bitte Text einfügen oder die relevanten Seiten als Bild hochladen."
+              : "Kein lesbarer Text im Bild gefunden. Bitte besseres Bild verwenden oder Text einfügen.",
           },
           { status: 400 }
         );
