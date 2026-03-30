@@ -10,7 +10,7 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Kostenlos Allergenliste erstellen - Kostenlos & Professionell | Für Gastronomie & Restaurants',
-  description: 'Allergene & Zusatzstoffe Generator. Erstellen Sie kostenlos eine professionelle Allergenliste für Ihre Speisekarte. PDF & Excel Export, mit Logo-Upload. Ideal für Restaurants & Gastronomie.',
+  description: 'Allergene, Zusatzstoffe und Pflicht-Hinweise für Ihre Speisekarte erfassen. PDF- und CSV-Export, Logo-Upload und KI-Import für Gastronomie und Restaurants.',
 };
 
 export default function RootLayout({

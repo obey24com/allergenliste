@@ -47,7 +47,7 @@ export function ToolFAQ() {
               </li>
               <li className="flex items-start gap-2">
                 <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
-                Zwischen Allergene und Zusatzstoffe wechseln
+                Zwischen Allergene, Zusatzstoffe und Pflicht-Hinweise wechseln
               </li>
               <li className="flex items-start gap-2">
                 <MousePointer2 className="h-4 w-4 mt-1 shrink-0" />
@@ -139,8 +139,8 @@ export function ToolFAQ() {
           <div>
             <p className="font-medium">📥 Welche Importformate werden unterstützt?</p>
             <p className="mt-1 text-muted-foreground">
-              CSV-Dateien mit den Spalten Name, Allergene, Zusatzstoffe sowie Copy-Paste
-              aus Excel/Google Sheets.
+              CSV-Dateien mit den Spalten Name, Allergene, Zusatzstoffe,
+              Pflicht-Hinweise sowie Copy-Paste aus Excel/Google Sheets.
             </p>
           </div>
         </div>

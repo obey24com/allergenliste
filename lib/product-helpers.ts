@@ -1,4 +1,4 @@
-import { ADDITIVES, ALLERGENS } from "@/lib/constants";
+import { ADDITIVES, ALLERGENS, LEGAL_NOTICES } from "@/lib/constants";
 
 export type ExportMode = "cleartext" | "codes";
 
@@ -14,15 +14,20 @@ const uniqueValues = <T,>(values: T[]) => Array.from(new Set(values));
 
 export const ALLERGEN_ENTRIES = Object.entries(ALLERGENS);
 export const ADDITIVE_ENTRIES = Object.entries(ADDITIVES);
+export const LEGAL_NOTICE_ENTRIES = Object.entries(LEGAL_NOTICES);
 
 export const toAllergenCode = (key: string) => key.toUpperCase();
 export const toAdditiveCode = (key: string) => key;
+export const toLegalNoticeCode = (key: string) => key.toUpperCase();
 
 export const allergenLabelFromKey = (key: string) =>
   ALLERGENS[key as keyof typeof ALLERGENS] ?? key;
 
 export const additiveLabelFromKey = (key: string) =>
   ADDITIVES[key as keyof typeof ADDITIVES] ?? key;
+
+export const legalNoticeLabelFromKey = (key: string) =>
+  LEGAL_NOTICES[key as keyof typeof LEGAL_NOTICES] ?? key;
 
 export const formatAllergenValues = (keys: string[], mode: ExportMode) =>
   keys
@@ -34,6 +39,13 @@ export const formatAllergenValues = (keys: string[], mode: ExportMode) =>
 export const formatAdditiveValues = (keys: string[], mode: ExportMode) =>
   keys
     .map((key) => (mode === "codes" ? toAdditiveCode(key) : additiveLabelFromKey(key)))
+    .join(", ");
+
+export const formatLegalNoticeValues = (keys: string[], mode: ExportMode) =>
+  keys
+    .map((key) =>
+      mode === "codes" ? toLegalNoticeCode(key) : legalNoticeLabelFromKey(key)
+    )
     .join(", ");
 
 const resolveAllergenToken = (token: string): string | null => {
@@ -68,6 +80,23 @@ const resolveAdditiveToken = (token: string): string | null => {
   }
 
   const labelEntry = ADDITIVE_ENTRIES.find(
+    ([, label]) => normalizeValue(label) === normalized
+  );
+  return labelEntry?.[0] ?? null;
+};
+
+const resolveLegalNoticeToken = (token: string): string | null => {
+  const normalized = normalizeValue(token);
+  if (!normalized) {
+    return null;
+  }
+
+  const potentialCode = normalized.replace(/[^a-z0-9]/g, "");
+  if (potentialCode in LEGAL_NOTICES) {
+    return potentialCode;
+  }
+
+  const labelEntry = LEGAL_NOTICE_ENTRIES.find(
     ([, label]) => normalizeValue(label) === normalized
   );
   return labelEntry?.[0] ?? null;
@@ -111,5 +140,27 @@ export const parseAdditiveInput = (value: string) => {
   };
 };
 
-export const hasMissingDeclarations = (allergens: string[], additives: string[]) =>
-  allergens.length === 0 && additives.length === 0;
+export const parseLegalNoticeInput = (value: string) => {
+  const keys: string[] = [];
+  const invalidTokens: string[] = [];
+
+  splitTokenList(value).forEach((token) => {
+    const resolved = resolveLegalNoticeToken(token);
+    if (resolved) {
+      keys.push(resolved);
+    } else {
+      invalidTokens.push(token);
+    }
+  });
+
+  return {
+    keys: uniqueValues(keys),
+    invalidTokens: uniqueValues(invalidTokens),
+  };
+};
+
+export const hasMissingDeclarations = (
+  allergens: string[],
+  additives: string[],
+  legalNotices: string[] = []
+) => allergens.length === 0 && additives.length === 0 && legalNotices.length === 0;

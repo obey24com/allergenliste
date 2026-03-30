@@ -7,7 +7,7 @@ import { FileDown, Loader2 } from "lucide-react";
 import Papa from "papaparse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { ALLERGENS, ADDITIVES } from "@/lib/constants";
+import { ALLERGENS, ADDITIVES, LEGAL_NOTICES } from "@/lib/constants";
 import {
   Select,
   SelectContent,
@@ -18,9 +18,11 @@ import {
 import {
   ADDITIVE_ENTRIES,
   ALLERGEN_ENTRIES,
+  LEGAL_NOTICE_ENTRIES,
   ExportMode,
   formatAdditiveValues,
   formatAllergenValues,
+  formatLegalNoticeValues,
   hasMissingDeclarations,
 } from "@/lib/product-helpers";
 import { toast } from "@/hooks/use-toast";
@@ -114,7 +116,7 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
   const hasProductsWithMissingDeclarations = useMemo(
     () =>
       products.some((product) =>
-        hasMissingDeclarations(product.allergens, product.additives)
+        hasMissingDeclarations(product.allergens, product.additives, product.legalNotices)
       ),
     [products]
   );
@@ -126,21 +128,32 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
         Name: product.name,
         Allergene: formatAllergenValues(product.allergens, exportMode),
         Zusatzstoffe: formatAdditiveValues(product.additives, exportMode),
+        "Pflicht-Hinweise": formatLegalNoticeValues(product.legalNotices, exportMode),
       }));
 
       if (exportMode === "codes") {
-        data.push({ Name: "", Allergene: "", Zusatzstoffe: "" });
+        data.push({ Name: "", Allergene: "", Zusatzstoffe: "", "Pflicht-Hinweise": "" });
         data.push({
           Name: "Legende Allergene",
           Allergene: ALLERGEN_ENTRIES.map(([key, label]) => `${key.toUpperCase()}=${label}`).join(
             " | "
           ),
           Zusatzstoffe: "",
+          "Pflicht-Hinweise": "",
         });
         data.push({
           Name: "Legende Zusatzstoffe",
           Allergene: "",
           Zusatzstoffe: ADDITIVE_ENTRIES.map(([key, label]) => `${key}=${label}`).join(" | "),
+          "Pflicht-Hinweise": "",
+        });
+        data.push({
+          Name: "Legende Pflicht-Hinweise",
+          Allergene: "",
+          Zusatzstoffe: "",
+          "Pflicht-Hinweise": LEGAL_NOTICE_ENTRIES.map(
+            ([key, label]) => `${key.toUpperCase()}=${label}`
+          ).join(" | "),
         });
       }
 
@@ -179,7 +192,7 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
 
       doc.setFontSize(14);
       doc.setTextColor(33, 37, 41);
-      doc.text("Allergen- und Zusatzstoffliste", pageWidth / 2, startY, {
+      doc.text("Allergen-, Zusatzstoff- und Hinweisliste", pageWidth / 2, startY, {
         align: "center",
       });
       startY += 6;
@@ -221,7 +234,7 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
       doc.setFontSize(10);
       doc.setTextColor(128, 128, 128);
       doc.text(
-        "Lebensmittel/Speisen sind mit nachfolgenden Zusatzstoffen und Allergenen hergestellt:",
+        "Lebensmittel/Speisen sind mit nachfolgenden Allergenen, Zusatzstoffen und Pflicht-Hinweisen gekennzeichnet:",
         pageWidth / 2,
         startY,
         { align: "center" }
@@ -232,6 +245,7 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
         product.name,
         formatAllergenValues(product.allergens, exportMode) || "Keine Angabe",
         formatAdditiveValues(product.additives, exportMode) || "Keine Angabe",
+        formatLegalNoticeValues(product.legalNotices, exportMode) || "Keine Angabe",
       ]);
 
       autoTable(doc, {
@@ -239,7 +253,8 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
           [
             "Name",
             exportMode === "codes" ? "Allergene (A-N)" : "Allergene",
-            exportMode === "codes" ? "Zusatzstoffe (1-10)" : "Zusatzstoffe",
+            exportMode === "codes" ? "Zusatzstoffe (1-15)" : "Zusatzstoffe",
+            exportMode === "codes" ? "Pflicht-Hinweise (H1-H8)" : "Pflicht-Hinweise",
           ],
         ],
         body: tableData,
@@ -299,6 +314,27 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
         autoTable(doc, {
           head: [["Zusatzstoff-Code", "Bedeutung"]],
           body: Object.entries(ADDITIVES).map(([key, label]) => [key, label]),
+          startY: legendStartY + 5,
+          styles: {
+            fontSize: 8,
+            cellPadding: 2,
+          },
+          theme: "grid",
+          margin: { left: 14, right: 14 },
+        });
+
+        legendStartY =
+          (
+            doc as jsPDF & {
+              lastAutoTable?: {
+                finalY: number;
+              };
+            }
+          ).lastAutoTable?.finalY ?? legendStartY + 20;
+
+        autoTable(doc, {
+          head: [["Hinweis-Code", "Bedeutung"]],
+          body: Object.entries(LEGAL_NOTICES).map(([key, label]) => [key.toUpperCase(), label]),
           startY: legendStartY + 5,
           styles: {
             fontSize: 8,
@@ -390,8 +426,8 @@ export function ExportButtons({ products, logoUrl }: ExportButtonsProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Trotzdem exportieren?</AlertDialogTitle>
             <AlertDialogDescription>
-              Mindestens ein Produkt hat keine Allergene oder Zusatzstoffe. Sie können den
-              Export trotzdem fortsetzen und die Liste später ergänzen.
+              Mindestens ein Produkt hat keine Allergene, Zusatzstoffe oder Pflicht-Hinweise.
+              Sie können den Export trotzdem fortsetzen und die Liste später ergänzen.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

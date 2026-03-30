@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AllergenCheckbox } from "@/components/allergen-checkbox";
 import { Product } from "@/types/product";
-import { ALLERGENS, ADDITIVES } from "@/lib/constants";
+import { ALLERGENS, ADDITIVES, LEGAL_NOTICES } from "@/lib/constants";
 import { hasMissingDeclarations } from "@/lib/product-helpers";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -29,6 +29,7 @@ export function ProductForm({
   const [name, setName] = useState(initialData?.name ?? "");
   const [allergens, setAllergens] = useState<string[]>(initialData?.allergens ?? []);
   const [additives, setAdditives] = useState<string[]>(initialData?.additives ?? []);
+  const [legalNotices, setLegalNotices] = useState<string[]>(initialData?.legalNotices ?? []);
   const [keepSelection, setKeepSelection] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestionReasoning, setSuggestionReasoning] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export function ProductForm({
       );
     });
 
-  const hasNoDeclarations = hasMissingDeclarations(allergens, additives);
+  const hasNoDeclarations = hasMissingDeclarations(allergens, additives, legalNotices);
 
   const handleAISuggestion = async () => {
     const trimmedName = name.trim();
@@ -74,14 +75,17 @@ export function ProductForm({
       const data = (await response.json()) as {
         allergens?: string[];
         additives?: string[];
+        legalNotices?: string[];
         reasoning?: string;
       };
 
       const suggestedAllergens = Array.isArray(data.allergens) ? data.allergens : [];
       const suggestedAdditives = Array.isArray(data.additives) ? data.additives : [];
+      const suggestedLegalNotices = Array.isArray(data.legalNotices) ? data.legalNotices : [];
 
       setAllergens(suggestedAllergens);
       setAdditives(suggestedAdditives);
+      setLegalNotices(suggestedLegalNotices);
       setSuggestionReasoning(data.reasoning?.trim() || "Keine zusätzliche Begründung.");
 
       toast({
@@ -110,6 +114,7 @@ export function ProductForm({
       name: trimmedName,
       allergens,
       additives,
+      legalNotices,
     });
 
     if (!initialData) {
@@ -117,6 +122,7 @@ export function ProductForm({
       if (!keepSelection) {
         setAllergens([]);
         setAdditives([]);
+        setLegalNotices([]);
       }
       setSuggestionReasoning(null);
       requestAnimationFrame(() => nameInputRef.current?.focus());
@@ -136,6 +142,12 @@ export function ProductForm({
       prev.includes(key) 
         ? prev.filter(k => k !== key)
         : [...prev, key]
+    );
+  };
+
+  const toggleLegalNotice = (key: string) => {
+    setLegalNotices((prev) =>
+      prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key]
     );
   };
 
@@ -172,7 +184,7 @@ export function ProductForm({
       </div>
 
       <Tabs defaultValue="allergens" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="allergens" className="gap-2">
             Allergene
             {allergens.length > 0 && (
@@ -186,6 +198,14 @@ export function ProductForm({
             {additives.length > 0 && (
               <Badge variant="secondary" className="px-2 py-0 text-[10px] leading-5">
                 {additives.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="legal-notices" className="gap-2">
+            Hinweise
+            {legalNotices.length > 0 && (
+              <Badge variant="secondary" className="px-2 py-0 text-[10px] leading-5">
+                {legalNotices.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -216,6 +236,19 @@ export function ProductForm({
             ))}
           </div>
         </TabsContent>
+        <TabsContent value="legal-notices" className="mt-4">
+          <div className="grid grid-cols-1 gap-3">
+            {Object.entries(LEGAL_NOTICES).map(([key, label]) => (
+              <AllergenCheckbox
+                key={key}
+                id={`legal-notice-${key}`}
+                label={label}
+                checked={legalNotices.includes(key)}
+                onChange={() => toggleLegalNotice(key)}
+              />
+            ))}
+          </div>
+        </TabsContent>
       </Tabs>
 
       {suggestionReasoning && (
@@ -235,8 +268,8 @@ export function ProductForm({
         )}
         {hasNoDeclarations && (
           <p className="text-sm text-amber-700">
-            Hinweis: Für dieses Produkt wurden noch keine Allergene oder Zusatzstoffe
-            ausgewählt.
+            Hinweis: Für dieses Produkt wurden noch keine Allergene, Zusatzstoffe oder
+            Pflicht-Hinweise ausgewählt.
           </p>
         )}
       </div>

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { ADDITIVES, ALLERGENS } from "@/lib/constants";
+import { ADDITIVES, ALLERGENS, LEGAL_NOTICES } from "@/lib/constants";
 import {
   aiAllergenSuggestionJsonSchema,
   aiAllergenSuggestionSchema,
   allAdditiveKeysLabel,
   allAllergenKeysLabel,
+  allLegalNoticeKeysLabel,
 } from "@/lib/ai-schemas";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -28,6 +29,7 @@ const toList = (entries: Record<string, string>, transformKey?: (value: string) 
 
 const allergenList = toList(ALLERGENS, (key) => key.toUpperCase());
 const additiveList = toList(ADDITIVES);
+const legalNoticeList = toList(LEGAL_NOTICES, (key) => key.toUpperCase());
 
 const getClientIdentifier = (request: NextRequest) => {
   const forwardedFor = request.headers.get("x-forwarded-for");
@@ -84,6 +86,8 @@ Du bist ein Assistent für Gastronomie-Allergenkennzeichnung nach EU LMIV.
 Antworte AUSSCHLIESSLICH als JSON im vorgegebenen Schema.
 Nutze nur diese Allergen-Keys: ${allAllergenKeysLabel}.
 Nutze nur diese Zusatzstoff-Keys: ${allAdditiveKeysLabel}.
+Nutze nur diese Hinweis-Keys: ${allLegalNoticeKeysLabel}.
+Schlage Hinweise nur dann vor, wenn sie aus dem Produktnamen sehr naheliegend sind.
 Wenn unsicher, gib lieber einen vorsichtigen Hinweis in reasoning und schlage wahrscheinliche Treffer vor.
 `,
         },
@@ -95,10 +99,13 @@ Produktname: ${productName}
 Allergene (A-N):
 ${allergenList}
 
-Zusatzstoffe (1-10):
+Zusatzstoffe (1-15):
 ${additiveList}
 
-Gib wahrscheinliche Allergene und Zusatzstoffe für das Produkt zurück.
+Rechtlich relevante Hinweise (H1-H8):
+${legalNoticeList}
+
+Gib wahrscheinliche Allergene, Zusatzstoffe und Hinweise für das Produkt zurück.
 `,
         },
       ],
@@ -113,6 +120,7 @@ Gib wahrscheinliche Allergene und Zusatzstoffe für das Produkt zurück.
     return NextResponse.json({
       allergens: Array.from(new Set(parsed.allergens)),
       additives: Array.from(new Set(parsed.additives)),
+      legalNotices: Array.from(new Set(parsed.legalNotices)),
       reasoning: parsed.reasoning,
     });
   } catch (error) {

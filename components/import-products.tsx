@@ -17,8 +17,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ALLERGENS, ADDITIVES } from "@/lib/constants";
-import { parseAdditiveInput, parseAllergenInput } from "@/lib/product-helpers";
+import { ALLERGENS, ADDITIVES, LEGAL_NOTICES } from "@/lib/constants";
+import {
+  parseAdditiveInput,
+  parseAllergenInput,
+  parseLegalNoticeInput,
+} from "@/lib/product-helpers";
 import {
   Table,
   TableBody,
@@ -67,11 +71,23 @@ const ADDITIVE_HEADERS = [
   "zusatzstoffkurzel",
   "additives",
 ];
+const LEGAL_NOTICE_HEADERS = [
+  "hinweise",
+  "pflichtangaben",
+  "pflichtangabe",
+  "rechtshinweise",
+  "rechtlicherhinweis",
+  "rechtlichehinweise",
+  "kennzeichnungshinweise",
+  "legalnotices",
+];
 
 const ALLERGEN_OPTIONS = Object.entries(ALLERGENS);
 const ADDITIVE_OPTIONS = Object.entries(ADDITIVES);
+const LEGAL_NOTICE_OPTIONS = Object.entries(LEGAL_NOTICES);
 const ALLERGEN_LABELS = new Map(ALLERGEN_OPTIONS);
 const ADDITIVE_LABELS = new Map(ADDITIVE_OPTIONS);
+const LEGAL_NOTICE_LABELS = new Map(LEGAL_NOTICE_OPTIONS);
 
 const normalizeHeader = (value: string) =>
   value
@@ -118,6 +134,7 @@ const buildProduct = (
   nameInput: string,
   allergensInput: string,
   additivesInput: string,
+  legalNoticesInput: string,
   rowNumber: number
 ) => {
   const name = nameInput.trim();
@@ -132,6 +149,8 @@ const buildProduct = (
     parseAllergenInput(allergensInput);
   const { keys: additives, invalidTokens: invalidAdditives } =
     parseAdditiveInput(additivesInput);
+  const { keys: legalNotices, invalidTokens: invalidLegalNotices } =
+    parseLegalNoticeInput(legalNoticesInput);
 
   const warnings: string[] = [];
 
@@ -147,12 +166,19 @@ const buildProduct = (
     );
   }
 
+  if (invalidLegalNotices.length > 0) {
+    warnings.push(
+      `Zeile ${rowNumber}: Unbekannte Pflicht-Hinweise ignoriert (${invalidLegalNotices.join(", ")}).`
+    );
+  }
+
   return {
     product: {
       id: crypto.randomUUID(),
       name,
       allergens,
       additives,
+      legalNotices,
     } satisfies Product,
     warnings,
   };
@@ -167,6 +193,7 @@ const parseHeaderRows = (rows: Record<string, unknown>[]) => {
       readField(row, NAME_HEADERS),
       readField(row, ALLERGEN_HEADERS),
       readField(row, ADDITIVE_HEADERS),
+      readField(row, LEGAL_NOTICE_HEADERS),
       index + 2
     );
 
@@ -193,7 +220,13 @@ const parseRowsWithoutHeader = (rows: string[][]) => {
 
   rowsToParse.forEach((row, index) => {
     const rowNumber = hasHeader ? index + 2 : index + 1;
-    const created = buildProduct(row[0] ?? "", row[1] ?? "", row[2] ?? "", rowNumber);
+    const created = buildProduct(
+      row[0] ?? "",
+      row[1] ?? "",
+      row[2] ?? "",
+      row[3] ?? "",
+      rowNumber
+    );
     warnings.push(...created.warnings);
     if (created.product) {
       products.push(created.product);
@@ -301,6 +334,25 @@ export function ImportProducts({
     );
   };
 
+  const toggleAiLegalNotice = (id: string, legalNoticeKey: string) => {
+    setAiPreviewProducts((previous) =>
+      previous.map((product) => {
+        if (product.id !== id) {
+          return product;
+        }
+
+        const legalNotices = product.legalNotices.includes(legalNoticeKey)
+          ? product.legalNotices.filter((key) => key !== legalNoticeKey)
+          : [...product.legalNotices, legalNoticeKey];
+
+        return {
+          ...product,
+          legalNotices: sortedUnique(legalNotices),
+        };
+      })
+    );
+  };
+
   const handleSelectAllPreview = (selected: boolean) => {
     if (!selected) {
       setSelectedAiProductIds(new Set());
@@ -356,6 +408,7 @@ export function ImportProducts({
           name: string;
           allergens: string[];
           additives: string[];
+          legalNotices: string[];
         }>;
         warnings?: string[];
       };
@@ -368,6 +421,9 @@ export function ImportProducts({
                 name: product.name?.trim() ?? "",
                 allergens: Array.isArray(product.allergens) ? sortedUnique(product.allergens) : [],
                 additives: Array.isArray(product.additives) ? sortedUnique(product.additives) : [],
+                legalNotices: Array.isArray(product.legalNotices)
+                  ? sortedUnique(product.legalNotices)
+                  : [],
               }))
               .filter((product) => product.name.length > 0)
           : [];
@@ -509,7 +565,7 @@ export function ImportProducts({
               </TabsList>
               <TabsContent value="csv" className="space-y-3 pt-2">
                 <Label htmlFor="csv-import">
-                  Erwartete Spalten: Name, Allergene, Zusatzstoffe
+                  Erwartete Spalten: Name, Allergene, Zusatzstoffe, Pflicht-Hinweise
                 </Label>
                 <Input
                   id="csv-import"
@@ -525,13 +581,15 @@ export function ImportProducts({
               </TabsContent>
               <TabsContent value="paste" className="space-y-3 pt-2">
                 <Label htmlFor="paste-import">
-                  Zeilenweise einfügen: Name;Allergene;Zusatzstoffe
+                  Zeilenweise einfügen: Name;Allergene;Zusatzstoffe;Pflicht-Hinweise
                 </Label>
                 <Textarea
                   id="paste-import"
                   value={pasteInput}
                   onChange={(event) => setPasteInput(event.target.value)}
-                  placeholder={"Wiener Schnitzel;A,C,G;2\nCaesar Salad;A,C,D;1,4"}
+                  placeholder={
+                    "Wiener Schnitzel;A,C,G;2;\nTonic Water;;;H1\nEnergy Drink;;;H7"
+                  }
                   className="min-h-[180px]"
                 />
                 <Button onClick={handlePasteImport} disabled={isImporting}>
@@ -654,11 +712,24 @@ export function ImportProducts({
                             </Tooltip>
                           ))}
                         </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium text-muted-foreground">Pflicht-Hinweise</span>
+                          {LEGAL_NOTICE_OPTIONS.map(([key, label]) => (
+                            <Tooltip key={`legend-legal-notice-${key}`}>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex min-w-[36px] items-center justify-center rounded-full border bg-background px-2 py-0.5 font-semibold">
+                                  {key.toUpperCase()}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{`${key.toUpperCase()}: ${label}`}</TooltipContent>
+                            </Tooltip>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
                     <div className="max-h-[420px] overflow-auto rounded-md border">
-                      <Table className="min-w-[980px]">
+                      <Table className="min-w-[1260px]">
                         <TableHeader>
                           <TableRow>
                             <TableHead className="w-[42px]">
@@ -667,6 +738,7 @@ export function ImportProducts({
                             <TableHead className="min-w-[230px]">Name</TableHead>
                             <TableHead className="min-w-[320px]">Allergene</TableHead>
                             <TableHead className="min-w-[320px]">Zusatzstoffe</TableHead>
+                            <TableHead className="min-w-[360px]">Pflicht-Hinweise</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -744,6 +816,38 @@ export function ImportProducts({
                                         aria-label={`${key}: ${label}`}
                                       >
                                         {key}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </TableCell>
+                              <TableCell className="align-top">
+                                <p className="mb-2 text-[11px] text-muted-foreground">
+                                  Ausgewählt:{" "}
+                                  {summarizeSelection(
+                                    product.legalNotices,
+                                    LEGAL_NOTICE_LABELS,
+                                    (value) => value.toUpperCase()
+                                  )}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {LEGAL_NOTICE_OPTIONS.map(([key, label]) => {
+                                    const isActive = product.legalNotices.includes(key);
+                                    return (
+                                      <button
+                                        key={key}
+                                        type="button"
+                                        className={cn(
+                                          "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
+                                          isActive
+                                            ? "border-primary bg-primary text-primary-foreground"
+                                            : "border-input text-muted-foreground hover:bg-accent"
+                                        )}
+                                        onClick={() => toggleAiLegalNotice(product.id, key)}
+                                        title={`${key.toUpperCase()}: ${label}`}
+                                        aria-label={`${key.toUpperCase()}: ${label}`}
+                                      >
+                                        {key.toUpperCase()}
                                       </button>
                                     );
                                   })}

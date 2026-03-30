@@ -42,6 +42,7 @@ import {
   additiveLabelFromKey,
   allergenLabelFromKey,
   hasMissingDeclarations,
+  legalNoticeLabelFromKey,
 } from "@/lib/product-helpers";
 import { ALLERGENS } from "@/lib/constants";
 import {
@@ -120,7 +121,11 @@ function SortableRow({
     opacity: isDragging ? 0.5 : 1,
     touchAction: isReorderEnabled ? "none" : "auto",
   } as CSSProperties;
-  const hasMissingData = hasMissingDeclarations(product.allergens, product.additives);
+  const hasMissingData = hasMissingDeclarations(
+    product.allergens,
+    product.additives,
+    product.legalNotices
+  );
 
   return (
     <TableRow ref={setNodeRef} style={style}>
@@ -164,6 +169,13 @@ function SortableRow({
       <TableCell>
         {product.additives.length > 0 ? (
           product.additives.map((key) => additiveLabelFromKey(key)).join(", ")
+        ) : (
+          <span className="text-muted-foreground">Keine Angabe</span>
+        )}
+      </TableCell>
+      <TableCell>
+        {product.legalNotices.length > 0 ? (
+          product.legalNotices.map((key) => legalNoticeLabelFromKey(key)).join(", ")
         ) : (
           <span className="text-muted-foreground">Keine Angabe</span>
         )}
@@ -227,7 +239,11 @@ function SortableCard({
     touchAction: isReorderEnabled ? "none" : "auto",
   } as CSSProperties;
 
-  const hasMissingData = hasMissingDeclarations(product.allergens, product.additives);
+  const hasMissingData = hasMissingDeclarations(
+    product.allergens,
+    product.additives,
+    product.legalNotices
+  );
 
   return (
     <Card ref={setNodeRef} style={style}>
@@ -307,6 +323,18 @@ function SortableCard({
             <p className="mt-1">
               {product.additives.length > 0 ? (
                 product.additives.map((key) => additiveLabelFromKey(key)).join(", ")
+              ) : (
+                <span className="text-muted-foreground">Keine Angabe</span>
+              )}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Pflicht-Hinweise
+            </p>
+            <p className="mt-1">
+              {product.legalNotices.length > 0 ? (
+                product.legalNotices.map((key) => legalNoticeLabelFromKey(key)).join(", ")
               ) : (
                 <span className="text-muted-foreground">Keine Angabe</span>
               )}
@@ -565,6 +593,7 @@ export function ProductTable({
                     <TableHead>Name</TableHead>
                     <TableHead>Allergene</TableHead>
                     <TableHead>Zusatzstoffe</TableHead>
+                    <TableHead>Pflicht-Hinweise</TableHead>
                     <TableHead className="w-[170px]">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>

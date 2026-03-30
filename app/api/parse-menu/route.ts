@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { ADDITIVES, ALLERGENS } from "@/lib/constants";
+import { ADDITIVES, ALLERGENS, LEGAL_NOTICES } from "@/lib/constants";
 import {
   aiMenuParseJsonSchema,
   aiMenuParseSchema,
   allAdditiveKeysLabel,
   allAllergenKeysLabel,
+  allLegalNoticeKeysLabel,
 } from "@/lib/ai-schemas";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -30,6 +31,7 @@ const toList = (entries: Record<string, string>, transformKey?: (value: string) 
 
 const allergenList = toList(ALLERGENS, (key) => key.toUpperCase());
 const additiveList = toList(ADDITIVES);
+const legalNoticeList = toList(LEGAL_NOTICES, (key) => key.toUpperCase());
 const MAX_TEXT_LENGTH = 18_000;
 const MAX_FILE_SIZE_BYTES = 12 * 1024 * 1024;
 const OCR_MODEL = "gpt-4.1-mini";
@@ -51,6 +53,7 @@ const normalizeProducts = (
     name: string;
     allergens: string[];
     additives: string[];
+    legalNotices: string[];
   }>
 ) => {
   const seenNames = new Set<string>();
@@ -59,6 +62,7 @@ const normalizeProducts = (
       name: product.name.trim(),
       allergens: Array.from(new Set(product.allergens)),
       additives: Array.from(new Set(product.additives)),
+      legalNotices: Array.from(new Set(product.legalNotices)),
     }))
     .filter((product) => product.name.length > 0)
     .filter((product) => {
@@ -234,13 +238,18 @@ Regeln:
 - Ignoriere Überschriften, Preise, dekorative Texte, Kategorienamen.
 - Verwende nur diese Allergen-Keys: ${allAllergenKeysLabel}
 - Verwende nur diese Zusatzstoff-Keys: ${allAdditiveKeysLabel}
+- Verwende nur diese Hinweis-Keys: ${allLegalNoticeKeysLabel}
+- Weise Hinweise nur zu, wenn sie im Text explizit genannt sind oder aus dem Produkt eindeutig folgen.
 - Wenn unsicher: lieber konservative, plausible Vorschläge.
 
 Allergene (A-N):
 ${allergenList}
 
-Zusatzstoffe (1-10):
+Zusatzstoffe (1-15):
 ${additiveList}
+
+Rechtlich relevante Hinweise (H1-H8):
+${legalNoticeList}
 `;
 
     const userText = `

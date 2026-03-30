@@ -28,20 +28,40 @@ export const ADDITIVE_KEY_VALUES = [
   "8",
   "9",
   "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15",
+] as const;
+
+export const LEGAL_NOTICE_KEY_VALUES = [
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "h7",
+  "h8",
 ] as const;
 
 export type AllergenKey = (typeof ALLERGEN_KEY_VALUES)[number];
 export type AdditiveKey = (typeof ADDITIVE_KEY_VALUES)[number];
+export type LegalNoticeKey = (typeof LEGAL_NOTICE_KEY_VALUES)[number];
 
 export const allAllergenKeysLabel = ALLERGEN_KEY_VALUES.map((value) => value.toUpperCase()).join(", ");
 export const allAdditiveKeysLabel = ADDITIVE_KEY_VALUES.join(", ");
+export const allLegalNoticeKeysLabel = LEGAL_NOTICE_KEY_VALUES.map((value) => value.toUpperCase()).join(", ");
 
 const allergenKeySchema = z.enum(ALLERGEN_KEY_VALUES);
 const additiveKeySchema = z.enum(ADDITIVE_KEY_VALUES);
+const legalNoticeKeySchema = z.enum(LEGAL_NOTICE_KEY_VALUES);
 
 export const aiAllergenSuggestionSchema = z.object({
   allergens: z.array(allergenKeySchema).default([]),
   additives: z.array(additiveKeySchema).default([]),
+  legalNotices: z.array(legalNoticeKeySchema).default([]),
   reasoning: z.string().min(1).max(800),
 });
 
@@ -49,6 +69,7 @@ export const aiMenuProductSchema = z.object({
   name: z.string().min(1).max(180),
   allergens: z.array(allergenKeySchema).default([]),
   additives: z.array(additiveKeySchema).default([]),
+  legalNotices: z.array(legalNoticeKeySchema).default([]),
 });
 
 export const aiMenuParseSchema = z.object({
@@ -62,7 +83,7 @@ export const aiAllergenSuggestionJsonSchema = {
   schema: {
     type: "object",
     additionalProperties: false,
-    required: ["allergens", "additives", "reasoning"],
+    required: ["allergens", "additives", "legalNotices", "reasoning"],
     properties: {
       allergens: {
         type: "array",
@@ -71,6 +92,10 @@ export const aiAllergenSuggestionJsonSchema = {
       additives: {
         type: "array",
         items: { type: "string", enum: [...ADDITIVE_KEY_VALUES] },
+      },
+      legalNotices: {
+        type: "array",
+        items: { type: "string", enum: [...LEGAL_NOTICE_KEY_VALUES] },
       },
       reasoning: {
         type: "string",
@@ -95,7 +120,7 @@ export const aiMenuParseJsonSchema = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["name", "allergens", "additives"],
+          required: ["name", "allergens", "additives", "legalNotices"],
           properties: {
             name: { type: "string", minLength: 1, maxLength: 180 },
             allergens: {
@@ -105,6 +130,10 @@ export const aiMenuParseJsonSchema = {
             additives: {
               type: "array",
               items: { type: "string", enum: [...ADDITIVE_KEY_VALUES] },
+            },
+            legalNotices: {
+              type: "array",
+              items: { type: "string", enum: [...LEGAL_NOTICE_KEY_VALUES] },
             },
           },
         },

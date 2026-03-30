@@ -26,21 +26,25 @@ const DEMO_PRODUCTS: Array<Omit<Product, "id">> = [
     name: "Wiener Schnitzel",
     allergens: ["a", "c", "g"],
     additives: [],
+    legalNotices: [],
   },
   {
     name: "Caesar Salad",
     allergens: ["a", "c", "d", "g", "j"],
     additives: ["1"],
+    legalNotices: [],
   },
   {
     name: "Tomatensuppe",
     allergens: ["i"],
     additives: ["2"],
+    legalNotices: [],
   },
   {
     name: "Hausdessert",
     allergens: ["a", "c", "g", "h"],
     additives: ["9"],
+    legalNotices: [],
   },
 ];
 
@@ -63,6 +67,7 @@ const toStoredProduct = (value: unknown): Product | null => {
     name: candidate.name.trim(),
     allergens: isStringArray(candidate.allergens) ? candidate.allergens : [],
     additives: isStringArray(candidate.additives) ? candidate.additives : [],
+    legalNotices: isStringArray(candidate.legalNotices) ? candidate.legalNotices : [],
   };
 };
 
@@ -239,6 +244,7 @@ export default function Home() {
           name: nextName,
           allergens: demoProduct.allergens,
           additives: demoProduct.additives,
+          legalNotices: demoProduct.legalNotices,
         } satisfies Product;
       });
 
@@ -259,7 +265,10 @@ export default function Home() {
         return false;
       }
 
-      if (missingOnly && !hasMissingDeclarations(product.allergens, product.additives)) {
+      if (
+        missingOnly &&
+        !hasMissingDeclarations(product.allergens, product.additives, product.legalNotices)
+      ) {
         return false;
       }
 

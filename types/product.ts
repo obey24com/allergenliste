@@ -3,4 +3,5 @@ export interface Product {
   name: string;
   allergens: string[];
   additives: string[];
+  legalNotices: string[];
 }

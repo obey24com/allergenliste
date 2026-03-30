@@ -23,7 +23,7 @@ export function OnboardingBanner({
           <h2 className="text-base font-semibold sm:text-lg">In 3 Schritten zur fertigen Liste</h2>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
             <li>Produktnamen eingeben oder Liste importieren</li>
-            <li>Allergene und Zusatzstoffe auswählen (oder KI-Vorschlag nutzen)</li>
+            <li>Allergene, Zusatzstoffe und Pflicht-Hinweise auswählen (oder KI-Vorschlag nutzen)</li>
             <li>Als PDF oder CSV exportieren</li>
           </ol>
         </div>
