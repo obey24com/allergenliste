@@ -266,6 +266,11 @@ export function ImportProducts({
   triggerClassName,
 }: ImportProductsProps) {
   const [open, setOpen] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
+  const [gatePassword, setGatePassword] = useState("");
+  const [gateError, setGateError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [pasteInput, setPasteInput] = useState("");
   const [aiTextInput, setAiTextInput] = useState("");
   const [aiFile, setAiFile] = useState<File | null>(null);
@@ -275,6 +280,48 @@ export function ImportProducts({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+
+  const handleTriggerClick = () => {
+    if (isUnlocked) {
+      setOpen(true);
+    } else {
+      setGateOpen(true);
+    }
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!gatePassword.trim()) {
+      setGateError("Bitte geben Sie ein Passwort ein.");
+      return;
+    }
+
+    setIsVerifying(true);
+    setGateError(null);
+
+    try {
+      const response = await fetch("/api/verify-import-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: gatePassword.trim() }),
+      });
+
+      const data = (await response.json()) as { valid: boolean };
+
+      if (data.valid) {
+        setIsUnlocked(true);
+        setGateOpen(false);
+        setGatePassword("");
+        setGateError(null);
+        setOpen(true);
+      } else {
+        setGateError("Falsches Passwort. Bitte versuchen Sie es erneut.");
+      }
+    } catch {
+      setGateError("Fehler bei der Überprüfung. Bitte versuchen Sie es erneut.");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const visibleWarnings = useMemo(() => warnings.slice(0, 6), [warnings]);
   const selectedPreviewCount = useMemo(
@@ -564,11 +611,65 @@ export function ImportProducts({
         variant={triggerVariant}
         size={triggerSize}
         className={triggerClassName}
-        onClick={() => setOpen(true)}
+        onClick={handleTriggerClick}
       >
         <Upload className="mr-2 h-4 w-4" />
         {triggerLabel}
       </Button>
+      <Dialog open={gateOpen} onOpenChange={setGateOpen}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Zugang erforderlich</DialogTitle>
+            <DialogDescription>
+              Bitte kontaktieren Sie uns, um dieses Feature vorab nutzen zu können:{" "}
+              <a
+                href="mailto:info@hogaki.de"
+                className="font-medium text-primary underline underline-offset-4"
+              >
+                info@hogaki.de
+              </a>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="import-password">Passwort</Label>
+              <Input
+                id="import-password"
+                type="password"
+                value={gatePassword}
+                onChange={(event) => {
+                  setGatePassword(event.target.value);
+                  setGateError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void handlePasswordSubmit();
+                  }
+                }}
+                placeholder="Passwort eingeben"
+                disabled={isVerifying}
+              />
+              {gateError && (
+                <p className="text-sm text-destructive">{gateError}</p>
+              )}
+            </div>
+            <Button
+              onClick={() => void handlePasswordSubmit()}
+              disabled={isVerifying || !gatePassword.trim()}
+              className="w-full"
+            >
+              {isVerifying ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Wird überprüft...
+                </>
+              ) : (
+                "Freischalten"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] max-w-[95vw] overflow-y-auto sm:max-w-[1200px]">
           <DialogHeader>
