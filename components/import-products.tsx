@@ -23,6 +23,7 @@ import {
   parseAllergenInput,
   parseLegalNoticeInput,
 } from "@/lib/product-helpers";
+import { extractPdfText, prepareImageFile } from "@/lib/upload-prep";
 import {
   Table,
   TableBody,
@@ -449,16 +450,39 @@ export function ImportProducts({
 
     try {
       const formData = new FormData();
+      const prepWarnings: string[] = [];
+
       if (aiTextInput.trim()) {
         formData.append("text", aiTextInput.trim());
       }
+
       if (aiFile) {
         if (aiFile.type === "application/pdf") {
-          formData.append("pdf", aiFile);
+          setStatusMessage("PDF wird im Browser ausgelesen ...");
+          const prepared = await extractPdfText(aiFile);
+          if (prepared.notice) prepWarnings.push(prepared.notice);
+          if (!prepared.text || prepared.text.trim().length === 0) {
+            throw new Error(
+              "Aus diesem PDF konnte kein Text extrahiert werden. Bitte als Bild hochladen oder Text einfügen."
+            );
+          }
+          const existingText = aiTextInput.trim();
+          formData.set(
+            "text",
+            existingText ? `${existingText}\n\n${prepared.text}` : prepared.text
+          );
         } else {
-          formData.append("image", aiFile);
+          setStatusMessage("Bild wird vorbereitet ...");
+          const prepared = await prepareImageFile(aiFile);
+          if (prepared.notice) prepWarnings.push(prepared.notice);
+          if (!prepared.file) {
+            throw new Error("Bild konnte nicht vorbereitet werden.");
+          }
+          formData.append("image", prepared.file);
         }
       }
+
+      setStatusMessage("Speisekarte wird analysiert ...");
 
       const response = await fetch("/api/parse-menu", {
         method: "POST",
@@ -499,7 +523,10 @@ export function ImportProducts({
 
       setAiPreviewProducts(parsedProducts);
       setSelectedAiProductIds(new Set(parsedProducts.map((product) => product.id)));
-      setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setWarnings([
+        ...prepWarnings,
+        ...(Array.isArray(data.warnings) ? data.warnings : []),
+      ]);
       setStatusMessage(
         parsedProducts.length > 0
           ? `${parsedProducts.length} Produkte erkannt. Bitte prüfen und importieren.`
@@ -752,8 +779,9 @@ export function ImportProducts({
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Text-PDFs werden direkt gelesen. Gescannte PDFs bitte als Bild hochladen
-                    oder den Text einfügen.
+                    Text-PDFs (bis ca. 50 MB) werden direkt im Browser ausgelesen,
+                    Bilder werden automatisch komprimiert. Gescannte PDFs bitte als Bild
+                    hochladen oder den Text einfügen.
                   </p>
                 </div>
                 <Button

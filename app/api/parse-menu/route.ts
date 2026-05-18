@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
 import { ADDITIVES, ALLERGENS, LEGAL_NOTICES } from "@/lib/constants";
 import {
   aiMenuParseJsonSchema,
@@ -34,11 +33,10 @@ const allergenList = toList(ALLERGENS, (key) => key.toUpperCase());
 const additiveList = toList(ADDITIVES);
 const legalNoticeList = toList(LEGAL_NOTICES, (key) => key.toUpperCase());
 const MAX_TEXT_LENGTH = 18_000;
-const MAX_FILE_SIZE_BYTES = 12 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const OCR_MODEL = "gpt-4.1-mini";
 const PARSE_MODEL = "gpt-4.1-mini";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const SUPPORTED_PDF_TYPES = new Set(["application/pdf"]);
 
 const getClientIdentifier = (request: NextRequest) => {
   const forwardedFor = request.headers.get("x-forwarded-for");
@@ -118,26 +116,6 @@ const extractMenuTextFromImage = async ({
   return response.output_text.trim();
 };
 
-const extractMenuTextFromPdf = async (file: File) => {
-  const data = new Uint8Array(await file.arrayBuffer());
-  const parser = new PDFParse({ data });
-
-  try {
-    const result = await parser.getText();
-    const pages = result.pages
-      ?.map((page) => page.text.replace(/\s+/g, " ").trim())
-      .filter((pageText) => pageText.length > 0);
-
-    if (pages && pages.length > 0) {
-      return pages.join("\n\n");
-    }
-
-    return result.text.replace(/\s+/g, " ").trim();
-  } finally {
-    await parser.destroy();
-  }
-};
-
 export async function POST(request: NextRequest) {
   const openai = getOpenAIClient();
   if (!openai) {
@@ -160,16 +138,13 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const rawText = formData.get("text");
     const image = formData.get("image");
-    const pdf = formData.get("pdf");
 
     const textInput = typeof rawText === "string" ? rawText.trim() : "";
     const imageFile = image instanceof File && image.size > 0 ? image : null;
-    const pdfFile = pdf instanceof File && pdf.size > 0 ? pdf : null;
-    const uploadedFile = imageFile ?? pdfFile;
 
-    if (!textInput && !uploadedFile) {
+    if (!textInput && !imageFile) {
       return NextResponse.json(
-        { error: "Bitte senden Sie Text oder laden Sie ein Bild/PDF hoch." },
+        { error: "Bitte senden Sie Text oder laden Sie ein Bild hoch." },
         { status: 400 }
       );
     }
@@ -184,19 +159,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (pdfFile && !SUPPORTED_PDF_TYPES.has(pdfFile.type)) {
+    if (imageFile && imageFile.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json(
         {
-          error: "Bitte eine gültige PDF-Datei hochladen.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (uploadedFile && uploadedFile.size > MAX_FILE_SIZE_BYTES) {
-      return NextResponse.json(
-        {
-          error: "Datei ist zu groß. Bitte maximal 12 MB hochladen.",
+          error: "Bild ist zu groß. Bitte maximal 4 MB hochladen.",
         },
         { status: 400 }
       );
@@ -205,28 +171,20 @@ export async function POST(request: NextRequest) {
     const warnings: string[] = [];
     let combinedText = textInput;
 
-    if (uploadedFile) {
-      const isPdf = SUPPORTED_PDF_TYPES.has(uploadedFile.type);
-      const extractedText = isPdf
-        ? await extractMenuTextFromPdf(uploadedFile)
-        : await extractMenuTextFromImage({
-            openai,
-            file: uploadedFile,
-          });
+    if (imageFile) {
+      const extractedText = await extractMenuTextFromImage({
+        openai,
+        file: imageFile,
+      });
 
       if (extractedText) {
         combinedText = [textInput, extractedText].filter(Boolean).join("\n\n");
-        warnings.push(
-          isPdf
-            ? "PDF-Text wurde direkt aus der Datei extrahiert."
-            : "Bild wurde per OCR analysiert."
-        );
+        warnings.push("Bild wurde per OCR analysiert.");
       } else if (!textInput) {
         return NextResponse.json(
           {
-            error: isPdf
-              ? "Dieses PDF enthält keinen eingebetteten Text. Bitte Text einfügen oder die relevanten Seiten als Bild hochladen."
-              : "Kein lesbarer Text im Bild gefunden. Bitte besseres Bild verwenden oder Text einfügen.",
+            error:
+              "Kein lesbarer Text im Bild gefunden. Bitte besseres Bild verwenden oder Text einfügen.",
           },
           { status: 400 }
         );
