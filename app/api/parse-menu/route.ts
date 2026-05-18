@@ -1,6 +1,6 @@
-import { join } from "path";
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
+import { PDFParse } from "pdf-parse";
 import { ADDITIVES, ALLERGENS, LEGAL_NOTICES } from "@/lib/constants";
 import {
   aiMenuParseJsonSchema,
@@ -13,144 +13,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// PDF OCR plus the follow-up structured parse can exceed Vercel's default function duration.
+// OCR plus structured parse can exceed Vercel's default function duration.
 export const maxDuration = 60;
-
-type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
-
-class DOMMatrixStub {
-  multiplySelf() {
-    return this;
-  }
-
-  preMultiplySelf() {
-    return this;
-  }
-
-  translate() {
-    return this;
-  }
-
-  scale() {
-    return this;
-  }
-
-  rotate() {
-    return this;
-  }
-
-  invertSelf() {
-    return this;
-  }
-}
-
-class ImageDataStub {
-  data: Uint8ClampedArray;
-  width: number;
-  height: number;
-
-  constructor(dataOrWidth?: Uint8ClampedArray | number, width?: number, height?: number) {
-    if (dataOrWidth instanceof Uint8ClampedArray) {
-      this.data = dataOrWidth;
-      this.width = width ?? 0;
-      this.height = height ?? 0;
-      return;
-    }
-
-    this.width = typeof dataOrWidth === "number" ? dataOrWidth : width ?? 0;
-    this.height = typeof dataOrWidth === "number" ? width ?? 0 : height ?? 0;
-    this.data = new Uint8ClampedArray(this.width * this.height * 4);
-  }
-}
-
-class Path2DStub {
-  addPath() {}
-  closePath() {}
-  lineTo() {}
-  moveTo() {}
-  rect() {}
-}
-
-const PDFJS_STANDARD_FONT_DATA_URL = (() => {
-  const fontDirectory = join(process.cwd(), "node_modules", "pdfjs-dist", "standard_fonts");
-
-  return fontDirectory.endsWith("/") ? fontDirectory : `${fontDirectory}/`;
-})();
-
-const installPdfJsGlobals = () => {
-  if (!globalThis.DOMMatrix) {
-    globalThis.DOMMatrix = DOMMatrixStub as typeof DOMMatrix;
-  }
-
-  if (!globalThis.ImageData) {
-    globalThis.ImageData = ImageDataStub as typeof ImageData;
-  }
-
-  if (!globalThis.Path2D) {
-    globalThis.Path2D = Path2DStub as typeof Path2D;
-  }
-};
-
-let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
-
-const loadPdfJsModule = async () => {
-  if (!pdfJsModulePromise) {
-    pdfJsModulePromise = (async () => {
-      installPdfJsGlobals();
-
-      const originalGetBuiltinModule = process.getBuiltinModule;
-      if (!originalGetBuiltinModule) {
-        return import("pdfjs-dist/legacy/build/pdf.mjs");
-      }
-
-      const readBuiltinModule = (name: string) => originalGetBuiltinModule.call(process, name);
-
-      process.getBuiltinModule = ((name: string) => {
-        if (name === "module") {
-          const moduleBuiltin = readBuiltinModule("module") as {
-            createRequire: (specifier: string) => (id: string) => unknown;
-          };
-
-          return {
-            createRequire(specifier: string) {
-              const nativeRequire = moduleBuiltin.createRequire(specifier);
-
-              return (id: string) => {
-                if (id === "@napi-rs/canvas") {
-                  return {
-                    DOMMatrix: DOMMatrixStub,
-                    ImageData: ImageDataStub,
-                    Path2D: Path2DStub,
-                    createCanvas() {
-                      throw new Error(
-                        "Canvas rendering is not supported during PDF text extraction."
-                      );
-                    },
-                  };
-                }
-
-                return nativeRequire(id);
-              };
-            },
-          };
-        }
-
-        return readBuiltinModule(name);
-      }) as typeof process.getBuiltinModule;
-
-      try {
-        return await import("pdfjs-dist/legacy/build/pdf.mjs");
-      } finally {
-        process.getBuiltinModule = originalGetBuiltinModule;
-      }
-    })().catch((error) => {
-      pdfJsModulePromise = null;
-      throw error;
-    });
-  }
-
-  return pdfJsModulePromise;
-};
 
 const getOpenAIClient = () => {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -172,7 +36,7 @@ const legalNoticeList = toList(LEGAL_NOTICES, (key) => key.toUpperCase());
 const MAX_TEXT_LENGTH = 18_000;
 const MAX_FILE_SIZE_BYTES = 12 * 1024 * 1024;
 const OCR_MODEL = "gpt-4.1-mini";
-const PARSE_MODEL = "gpt-5.2";
+const PARSE_MODEL = "gpt-4.1-mini";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const SUPPORTED_PDF_TYPES = new Set(["application/pdf"]);
 
@@ -194,7 +58,7 @@ const normalizeProducts = (
   }>
 ) => {
   const seenNames = new Set<string>();
-  const normalized = products
+  return products
     .map((product) => ({
       name: product.name.trim(),
       allergens: Array.from(new Set(product.allergens)),
@@ -210,8 +74,6 @@ const normalizeProducts = (
       seenNames.add(key);
       return true;
     });
-
-  return normalized;
 };
 
 const fileToDataUrl = async (file: File) => {
@@ -228,33 +90,27 @@ const extractMenuTextFromImage = async ({
 }) => {
   const fileDataUrl = await fileToDataUrl(file);
 
-  const content: Array<
-    | { type: "input_text"; text: string }
-    | { type: "input_image"; image_url: string; detail: "high" }
-  > = [
-    {
-      type: "input_text",
-      text: `Extrahiere den Speisekarten-Inhalt möglichst vollständig als reinen Fließtext.
-- Liste Positionen zeilenweise.
-- Behalte Produktnamen, Zutatenhinweise und Kennzeichnungen bei.
-- Ignoriere dekorative Elemente.
-- Antworte nur mit dem extrahierten Text, ohne JSON, ohne Erklärungen.`,
-    },
-  ];
-
-  content.push({
-    type: "input_image",
-    image_url: fileDataUrl,
-    detail: "high",
-  });
-
   const response = await openai.responses.create({
     model: OCR_MODEL,
     max_output_tokens: 4_000,
     input: [
       {
         role: "user",
-        content,
+        content: [
+          {
+            type: "input_text",
+            text: `Extrahiere den Speisekarten-Inhalt möglichst vollständig als reinen Fließtext.
+- Liste Positionen zeilenweise.
+- Behalte Produktnamen, Zutatenhinweise und Kennzeichnungen bei.
+- Ignoriere dekorative Elemente.
+- Antworte nur mit dem extrahierten Text, ohne JSON, ohne Erklärungen.`,
+          },
+          {
+            type: "input_image",
+            image_url: fileDataUrl,
+            detail: "high",
+          },
+        ],
       },
     ],
   });
@@ -263,35 +119,22 @@ const extractMenuTextFromImage = async ({
 };
 
 const extractMenuTextFromPdf = async (file: File) => {
-  const { getDocument } = await loadPdfJsModule();
-  const loadingTask = getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
-    disableWorker: true,
-    standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL,
-    useSystemFonts: false,
-  });
-  const pdf = await loadingTask.promise;
+  const data = new Uint8Array(await file.arrayBuffer());
+  const parser = new PDFParse({ data });
 
   try {
-    const pages: string[] = [];
+    const result = await parser.getText();
+    const pages = result.pages
+      ?.map((page) => page.text.replace(/\s+/g, " ").trim())
+      .filter((pageText) => pageText.length > 0);
 
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const page = await pdf.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const pageText = content.items
-        .map((item) => ("str" in item ? item.str : ""))
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      if (pageText) {
-        pages.push(pageText);
-      }
+    if (pages && pages.length > 0) {
+      return pages.join("\n\n");
     }
 
-    return pages.join("\n\n");
+    return result.text.replace(/\s+/g, " ").trim();
   } finally {
-    await pdf.destroy();
+    await parser.destroy();
   }
 };
 
@@ -363,7 +206,8 @@ export async function POST(request: NextRequest) {
     let combinedText = textInput;
 
     if (uploadedFile) {
-      const extractedText = SUPPORTED_PDF_TYPES.has(uploadedFile.type)
+      const isPdf = SUPPORTED_PDF_TYPES.has(uploadedFile.type);
+      const extractedText = isPdf
         ? await extractMenuTextFromPdf(uploadedFile)
         : await extractMenuTextFromImage({
             openai,
@@ -373,14 +217,14 @@ export async function POST(request: NextRequest) {
       if (extractedText) {
         combinedText = [textInput, extractedText].filter(Boolean).join("\n\n");
         warnings.push(
-          SUPPORTED_PDF_TYPES.has(uploadedFile.type)
+          isPdf
             ? "PDF-Text wurde direkt aus der Datei extrahiert."
             : "Bild wurde per OCR analysiert."
         );
       } else if (!textInput) {
         return NextResponse.json(
           {
-            error: SUPPORTED_PDF_TYPES.has(uploadedFile.type)
+            error: isPdf
               ? "Dieses PDF enthält keinen eingebetteten Text. Bitte Text einfügen oder die relevanten Seiten als Bild hochladen."
               : "Kein lesbarer Text im Bild gefunden. Bitte besseres Bild verwenden oder Text einfügen.",
           },
