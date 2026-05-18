@@ -23,12 +23,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  AlertTriangle,
   ClipboardList,
   Copy,
   GripVertical,
+  Loader2,
   Pencil,
+  Sparkles,
   Trash2,
 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -70,6 +74,14 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+export interface BulkClassificationUpdate {
+  id: string;
+  allergens: string[];
+  additives: string[];
+  legalNotices: string[];
+  needsReview: boolean;
+}
+
 interface ProductTableProps {
   products: Product[];
   onDelete: (id: string) => void;
@@ -78,6 +90,7 @@ interface ProductTableProps {
   onDuplicate: (product: Product) => void;
   onBulkDelete?: (ids: string[]) => void;
   onBulkAddAllergen?: (ids: string[], allergenKey: string) => void;
+  onBulkClassify?: (updates: BulkClassificationUpdate[]) => void;
   isReorderEnabled?: boolean;
 }
 
@@ -126,6 +139,7 @@ function SortableRow({
     product.additives,
     product.legalNotices
   );
+  const needsReview = product.needsReview === true;
 
   return (
     <TableRow ref={setNodeRef} style={style}>
@@ -150,12 +164,23 @@ function SortableRow({
         </Button>
       </TableCell>
       <TableCell>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{product.name}</span>
-          {hasMissingData && (
-            <Badge variant="outline" className="border-amber-300 text-amber-700">
-              Prüfen
+          {needsReview ? (
+            <Badge
+              variant="outline"
+              className="gap-1 border-amber-400 bg-amber-50 text-amber-800"
+              title="Die KI war sich bei diesem Produkt nicht sicher. Bitte prüfen Sie die Kennzeichnung manuell."
+            >
+              <AlertTriangle className="h-3 w-3" />
+              Bitte überprüfen. Kennzeichnung unklar.
             </Badge>
+          ) : (
+            hasMissingData && (
+              <Badge variant="outline" className="border-amber-300 text-amber-700">
+                Prüfen
+              </Badge>
+            )
           )}
         </div>
       </TableCell>
@@ -244,6 +269,7 @@ function SortableCard({
     product.additives,
     product.legalNotices
   );
+  const needsReview = product.needsReview === true;
 
   return (
     <Card ref={setNodeRef} style={style}>
@@ -298,12 +324,22 @@ function SortableCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium">{product.name}</p>
-          {hasMissingData && (
-            <Badge variant="outline" className="border-amber-300 text-amber-700">
-              Prüfen
+          {needsReview ? (
+            <Badge
+              variant="outline"
+              className="gap-1 border-amber-400 bg-amber-50 text-amber-800"
+            >
+              <AlertTriangle className="h-3 w-3" />
+              Bitte überprüfen. Kennzeichnung unklar.
             </Badge>
+          ) : (
+            hasMissingData && (
+              <Badge variant="outline" className="border-amber-300 text-amber-700">
+                Prüfen
+              </Badge>
+            )
           )}
         </div>
 
@@ -354,6 +390,7 @@ export function ProductTable({
   onDuplicate,
   onBulkDelete,
   onBulkAddAllergen,
+  onBulkClassify,
   isReorderEnabled = true,
 }: ProductTableProps) {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -362,6 +399,7 @@ export function ProductTable({
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [bulkAllergenKey, setBulkAllergenKey] = useState(NO_BULK_ALLERGEN);
   const [isMobileView, setIsMobileView] = useState(false);
+  const [isClassifying, setIsClassifying] = useState(false);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 767px)");
@@ -481,6 +519,112 @@ export function ProductTable({
     setBulkAllergenKey(NO_BULK_ALLERGEN);
   };
 
+  const handleBulkAiClassify = async () => {
+    if (!onBulkClassify || !hasSelection || isClassifying) {
+      return;
+    }
+
+    const selectedProducts = products.filter((product) =>
+      selectedProductIds.has(product.id)
+    );
+
+    if (selectedProducts.length === 0) {
+      return;
+    }
+
+    const CHUNK_SIZE = 25;
+    const chunks: Product[][] = [];
+    for (let index = 0; index < selectedProducts.length; index += CHUNK_SIZE) {
+      chunks.push(selectedProducts.slice(index, index + CHUNK_SIZE));
+    }
+
+    setIsClassifying(true);
+
+    try {
+      const allUpdates: BulkClassificationUpdate[] = [];
+      let reviewCount = 0;
+
+      for (const chunk of chunks) {
+        const response = await fetch("/api/classify-products-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productNames: chunk.map((product) => product.name),
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(
+            payload?.error?.trim() || "Die KI-Klassifizierung ist fehlgeschlagen."
+          );
+        }
+
+        const data = (await response.json()) as {
+          products?: Array<{
+            allergens?: string[];
+            additives?: string[];
+            legalNotices?: string[];
+            needsReview?: boolean;
+          }>;
+        };
+
+        const aiResults = Array.isArray(data.products) ? data.products : [];
+
+        chunk.forEach((product, index) => {
+          const aiResult = aiResults[index];
+          if (!aiResult) {
+            allUpdates.push({
+              id: product.id,
+              allergens: product.allergens,
+              additives: product.additives,
+              legalNotices: product.legalNotices,
+              needsReview: true,
+            });
+            reviewCount += 1;
+            return;
+          }
+
+          const needsReview = aiResult.needsReview === true;
+          if (needsReview) {
+            reviewCount += 1;
+          }
+
+          allUpdates.push({
+            id: product.id,
+            allergens: Array.isArray(aiResult.allergens) ? aiResult.allergens : [],
+            additives: Array.isArray(aiResult.additives) ? aiResult.additives : [],
+            legalNotices: Array.isArray(aiResult.legalNotices)
+              ? aiResult.legalNotices
+              : [],
+            needsReview,
+          });
+        });
+      }
+
+      onBulkClassify(allUpdates);
+
+      toast({
+        title: "KI-Kennzeichnung abgeschlossen",
+        description:
+          reviewCount > 0
+            ? `${allUpdates.length} Produkte klassifiziert. ${reviewCount} davon bitte manuell überprüfen.`
+            : `${allUpdates.length} Produkte erfolgreich klassifiziert.`,
+      });
+    } catch (error) {
+      toast({
+        title: "KI-Kennzeichnung fehlgeschlagen",
+        description:
+          error instanceof Error ? error.message : "Unbekannter Fehler beim KI-Aufruf.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsClassifying(false);
+    }
+  };
+
   if (products.length === 0) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/30 p-8 text-center">
@@ -520,6 +664,26 @@ export function ProductTable({
             >
               Allergen zuweisen
             </Button>
+            {onBulkClassify && (
+              <Button
+                size="sm"
+                onClick={() => void handleBulkAiClassify()}
+                disabled={isClassifying}
+                title="Allergene, Zusatzstoffe und Pflicht-Hinweise per KI ermitteln und zuweisen"
+              >
+                {isClassifying ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    KI analysiert...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Kennzeichnung per KI
+                  </>
+                )}
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => setSelectedProductIds(new Set())}>
               Auswahl aufheben
             </Button>

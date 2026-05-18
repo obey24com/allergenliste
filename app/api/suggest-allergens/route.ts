@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      temperature: 0.1,
+      model: "gpt-5.4-mini-2026-03-17",
+      reasoning_effort: "low",
       response_format: {
         type: "json_schema",
         json_schema: aiAllergenSuggestionJsonSchema,

@@ -25,14 +25,6 @@ import {
 } from "@/lib/product-helpers";
 import { extractPdfText, prepareImageFile } from "@/lib/upload-prep";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -698,7 +690,7 @@ export function ImportProducts({
         </DialogContent>
       </Dialog>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] max-w-[95vw] overflow-y-auto sm:max-w-[1200px]">
+        <DialogContent className="max-h-[90vh] w-[95vw] max-w-[95vw] overflow-x-hidden overflow-y-auto sm:max-w-[960px]">
           <DialogHeader>
             <DialogTitle>Produkte importieren</DialogTitle>
             <DialogDescription>
@@ -883,135 +875,137 @@ export function ImportProducts({
                       </div>
                     </div>
 
-                    <div className="max-h-[420px] overflow-auto rounded-md border">
-                      <Table className="min-w-[1260px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-[42px]">
-                              <span className="sr-only">Auswahl</span>
-                            </TableHead>
-                            <TableHead className="min-w-[230px]">Name</TableHead>
-                            <TableHead className="min-w-[320px]">Allergene</TableHead>
-                            <TableHead className="min-w-[320px]">Zusatzstoffe</TableHead>
-                            <TableHead className="min-w-[360px]">Pflicht-Hinweise</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {aiPreviewProducts.map((product) => (
-                            <TableRow key={product.id}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedAiProductIds.has(product.id)}
-                                  onCheckedChange={(checked) =>
-                                    toggleAiSelection(product.id, checked === true)
-                                  }
-                                  aria-label={`Produkt ${product.name} auswählen`}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  value={product.name}
-                                  onChange={(event) =>
-                                    updateAiProductName(product.id, event.target.value)
-                                  }
-                                  placeholder="Produktname"
-                                />
-                              </TableCell>
-                              <TableCell className="align-top">
-                                <p className="mb-2 text-[11px] text-muted-foreground">
-                                  Ausgewählt:{" "}
-                                  {summarizeSelection(
-                                    product.allergens,
-                                    ALLERGEN_LABELS,
-                                    (value) => value.toUpperCase()
-                                  )}
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {ALLERGEN_OPTIONS.map(([key, label]) => {
-                                    const isActive = product.allergens.includes(key);
-                                    return (
-                                      <button
-                                        key={key}
-                                        type="button"
-                                        className={cn(
-                                          "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
-                                          isActive
-                                            ? "border-primary bg-primary text-primary-foreground"
-                                            : "border-input text-muted-foreground hover:bg-accent"
-                                        )}
-                                        onClick={() => toggleAiAllergen(product.id, key)}
-                                        title={`${key.toUpperCase()}: ${label}`}
-                                        aria-label={`${key.toUpperCase()}: ${label}`}
-                                      >
-                                        {key.toUpperCase()}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </TableCell>
-                              <TableCell className="align-top">
-                                <p className="mb-2 text-[11px] text-muted-foreground">
-                                  Ausgewählt: {summarizeSelection(product.additives, ADDITIVE_LABELS)}
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {ADDITIVE_OPTIONS.map(([key, label]) => {
-                                    const isActive = product.additives.includes(key);
-                                    return (
-                                      <button
-                                        key={key}
-                                        type="button"
-                                        className={cn(
-                                          "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
-                                          isActive
-                                            ? "border-primary bg-primary text-primary-foreground"
-                                            : "border-input text-muted-foreground hover:bg-accent"
-                                        )}
-                                        onClick={() => toggleAiAdditive(product.id, key)}
-                                        title={`${key}: ${label}`}
-                                        aria-label={`${key}: ${label}`}
-                                      >
-                                        {key}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </TableCell>
-                              <TableCell className="align-top">
-                                <p className="mb-2 text-[11px] text-muted-foreground">
-                                  Ausgewählt:{" "}
-                                  {summarizeSelection(
-                                    product.legalNotices,
-                                    LEGAL_NOTICE_LABELS,
-                                    (value) => value.toUpperCase()
-                                  )}
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {LEGAL_NOTICE_OPTIONS.map(([key, label]) => {
-                                    const isActive = product.legalNotices.includes(key);
-                                    return (
-                                      <button
-                                        key={key}
-                                        type="button"
-                                        className={cn(
-                                          "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
-                                          isActive
-                                            ? "border-primary bg-primary text-primary-foreground"
-                                            : "border-input text-muted-foreground hover:bg-accent"
-                                        )}
-                                        onClick={() => toggleAiLegalNotice(product.id, key)}
-                                        title={`${key.toUpperCase()}: ${label}`}
-                                        aria-label={`${key.toUpperCase()}: ${label}`}
-                                      >
-                                        {key.toUpperCase()}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                    <div className="max-h-[460px] space-y-2 overflow-y-auto rounded-md border p-2">
+                      {aiPreviewProducts.map((product) => (
+                        <div
+                          key={product.id}
+                          className="space-y-3 rounded-md border bg-card p-3"
+                        >
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              checked={selectedAiProductIds.has(product.id)}
+                              onCheckedChange={(checked) =>
+                                toggleAiSelection(product.id, checked === true)
+                              }
+                              aria-label={`Produkt ${product.name} auswählen`}
+                              className="mt-2.5 shrink-0"
+                            />
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <Label
+                                htmlFor={`ai-product-name-${product.id}`}
+                                className="text-[11px] uppercase tracking-wide text-muted-foreground"
+                              >
+                                Name
+                              </Label>
+                              <Input
+                                id={`ai-product-name-${product.id}`}
+                                value={product.name}
+                                onChange={(event) =>
+                                  updateAiProductName(product.id, event.target.value)
+                                }
+                                placeholder="Produktname"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium">Allergene</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Ausgewählt:{" "}
+                                {summarizeSelection(
+                                  product.allergens,
+                                  ALLERGEN_LABELS,
+                                  (value) => value.toUpperCase()
+                                )}
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {ALLERGEN_OPTIONS.map(([key, label]) => {
+                                  const isActive = product.allergens.includes(key);
+                                  return (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      className={cn(
+                                        "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
+                                        isActive
+                                          ? "border-primary bg-primary text-primary-foreground"
+                                          : "border-input text-muted-foreground hover:bg-accent"
+                                      )}
+                                      onClick={() => toggleAiAllergen(product.id, key)}
+                                      title={`${key.toUpperCase()}: ${label}`}
+                                      aria-label={`${key.toUpperCase()}: ${label}`}
+                                    >
+                                      {key.toUpperCase()}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium">Zusatzstoffe</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Ausgewählt:{" "}
+                                {summarizeSelection(product.additives, ADDITIVE_LABELS)}
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {ADDITIVE_OPTIONS.map(([key, label]) => {
+                                  const isActive = product.additives.includes(key);
+                                  return (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      className={cn(
+                                        "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
+                                        isActive
+                                          ? "border-primary bg-primary text-primary-foreground"
+                                          : "border-input text-muted-foreground hover:bg-accent"
+                                      )}
+                                      onClick={() => toggleAiAdditive(product.id, key)}
+                                      title={`${key}: ${label}`}
+                                      aria-label={`${key}: ${label}`}
+                                    >
+                                      {key}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium">Pflicht-Hinweise</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Ausgewählt:{" "}
+                                {summarizeSelection(
+                                  product.legalNotices,
+                                  LEGAL_NOTICE_LABELS,
+                                  (value) => value.toUpperCase()
+                                )}
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {LEGAL_NOTICE_OPTIONS.map(([key, label]) => {
+                                  const isActive = product.legalNotices.includes(key);
+                                  return (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      className={cn(
+                                        "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
+                                        isActive
+                                          ? "border-primary bg-primary text-primary-foreground"
+                                          : "border-input text-muted-foreground hover:bg-accent"
+                                      )}
+                                      onClick={() => toggleAiLegalNotice(product.id, key)}
+                                      title={`${key.toUpperCase()}: ${label}`}
+                                      aria-label={`${key.toUpperCase()}: ${label}`}
+                                    >
+                                      {key.toUpperCase()}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

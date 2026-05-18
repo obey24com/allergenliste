@@ -5,7 +5,7 @@ import { Header } from "@/components/header";
 import { LogoUpload } from "@/components/logo-upload";
 import { ImportProducts, type ImportSummary } from "@/components/import-products";
 import { ProductForm } from "@/components/product-form";
-import { ProductTable } from "@/components/product-table";
+import { ProductTable, type BulkClassificationUpdate } from "@/components/product-table";
 import { ProductFilter } from "@/components/product-filter";
 import { OnboardingBanner } from "@/components/onboarding-banner";
 import { ContentSections } from "@/components/content-sections";
@@ -116,6 +116,7 @@ const toStoredProduct = (value: unknown): Product | null => {
     allergens: isStringArray(candidate.allergens) ? candidate.allergens : [],
     additives: isStringArray(candidate.additives) ? candidate.additives : [],
     legalNotices: isStringArray(candidate.legalNotices) ? candidate.legalNotices : [],
+    needsReview: candidate.needsReview === true,
   };
 };
 
@@ -271,6 +272,30 @@ export default function Home() {
         return {
           ...product,
           allergens: [...product.allergens, allergenKey],
+        };
+      })
+    );
+  };
+
+  const handleBulkClassify = (updates: BulkClassificationUpdate[]) => {
+    if (updates.length === 0) {
+      return;
+    }
+
+    const updatesById = new Map(updates.map((update) => [update.id, update]));
+    setProducts((prev) =>
+      prev.map((product) => {
+        const update = updatesById.get(product.id);
+        if (!update) {
+          return product;
+        }
+
+        return {
+          ...product,
+          allergens: update.allergens,
+          additives: update.additives,
+          legalNotices: update.legalNotices,
+          needsReview: update.needsReview,
         };
       })
     );
@@ -460,6 +485,7 @@ export default function Home() {
                   onDuplicate={handleProductDuplicate}
                   onBulkDelete={handleBulkDelete}
                   onBulkAddAllergen={handleBulkAddAllergen}
+                  onBulkClassify={handleBulkClassify}
                   isReorderEnabled={!hasActiveFilters}
                 />
                 <p className="text-xs text-muted-foreground">

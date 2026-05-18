@@ -66,6 +66,18 @@ export const aiAllergenSuggestionSchema = z.object({
   reasoning: z.string().min(1).max(800),
 });
 
+export const aiBulkClassificationItemSchema = z.object({
+  name: z.string().min(1).max(180),
+  allergens: z.array(allergenKeySchema).default([]),
+  additives: z.array(additiveKeySchema).default([]),
+  legalNotices: z.array(legalNoticeKeySchema).default([]),
+  needsReview: z.boolean().default(false),
+});
+
+export const aiBulkClassificationSchema = z.object({
+  products: z.array(aiBulkClassificationItemSchema).max(50),
+});
+
 export const aiMenuProductSchema = z.object({
   name: z.string().min(1).max(180),
   allergens: z.array(allergenKeySchema).default([]),
@@ -102,6 +114,43 @@ export const aiAllergenSuggestionJsonSchema = {
         type: "string",
         minLength: 1,
         maxLength: 800,
+      },
+    },
+  },
+} as const;
+
+export const aiBulkClassificationJsonSchema = {
+  name: "bulk_classification_result",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["products"],
+    properties: {
+      products: {
+        type: "array",
+        maxItems: 50,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "allergens", "additives", "legalNotices", "needsReview"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 180 },
+            allergens: {
+              type: "array",
+              items: { type: "string", enum: [...ALLERGEN_KEY_VALUES] },
+            },
+            additives: {
+              type: "array",
+              items: { type: "string", enum: [...ADDITIVE_KEY_VALUES] },
+            },
+            legalNotices: {
+              type: "array",
+              items: { type: "string", enum: [...LEGAL_NOTICE_KEY_VALUES] },
+            },
+            needsReview: { type: "boolean" },
+          },
+        },
       },
     },
   },
