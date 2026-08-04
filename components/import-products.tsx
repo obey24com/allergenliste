@@ -1,21 +1,33 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  DragEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Papa from "papaparse";
-import { Loader2, Sparkles, Upload } from "lucide-react";
+import { FileText, ImageIcon, Loader2, Sparkles, Upload, X } from "lucide-react";
 import { Product } from "@/types/product";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ALLERGENS, ADDITIVES, LEGAL_NOTICES } from "@/lib/constants";
 import {
@@ -23,7 +35,12 @@ import {
   parseAllergenInput,
   parseLegalNoticeInput,
 } from "@/lib/product-helpers";
-import { extractPdfText, prepareImageFile } from "@/lib/upload-prep";
+import {
+  extractPdfText,
+  isPdfTextSufficient,
+  prepareImageFile,
+  renderPdfPagesToImages,
+} from "@/lib/upload-prep";
 import {
   Tooltip,
   TooltipContent,
@@ -49,6 +66,12 @@ export interface ImportSummary {
   added: number;
   updated: number;
   total: number;
+}
+
+interface QuotaStatus {
+  limit: number;
+  remaining: number;
+  resetsAt: number;
 }
 
 const NAME_HEADERS = ["name", "produkt", "produktname", "gericht", "speise"];
@@ -88,6 +111,14 @@ const ALLERGEN_LABELS = new Map(ALLERGEN_OPTIONS);
 const ADDITIVE_LABELS = new Map(ADDITIVE_OPTIONS);
 const LEGAL_NOTICE_LABELS = new Map(LEGAL_NOTICE_OPTIONS);
 
+const ACCEPTED_FILE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/pdf",
+]);
+const MAX_AI_FILES = 12;
+
 const normalizeHeader = (value: string) =>
   value
     .trim()
@@ -98,6 +129,12 @@ const toStringValue = (value: unknown) =>
   typeof value === "string" ? value : value == null ? "" : String(value);
 
 const sortedUnique = (values: string[]) => Array.from(new Set(values)).sort();
+
+const formatResetTime = (resetsAt: number) =>
+  `${new Intl.DateTimeFormat("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(resetsAt))} Uhr`;
 
 const formatImportSummary = ({ added, updated, total }: ImportSummary) => {
   if (total === 0) {
@@ -259,62 +296,40 @@ export function ImportProducts({
   triggerClassName,
 }: ImportProductsProps) {
   const [open, setOpen] = useState(false);
-  const [gateOpen, setGateOpen] = useState(false);
-  const [gatePassword, setGatePassword] = useState("");
-  const [gateError, setGateError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isUnlocked, setIsUnlocked] = useState(false);
   const [pasteInput, setPasteInput] = useState("");
   const [aiTextInput, setAiTextInput] = useState("");
-  const [aiFile, setAiFile] = useState<File | null>(null);
+  const [aiFiles, setAiFiles] = useState<File[]>([]);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [aiPreviewProducts, setAiPreviewProducts] = useState<Product[]>([]);
   const [selectedAiProductIds, setSelectedAiProductIds] = useState<Set<string>>(new Set());
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [quota, setQuota] = useState<QuotaStatus | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleTriggerClick = () => {
-    if (isUnlocked) {
-      setOpen(true);
-    } else {
-      setGateOpen(true);
-    }
-  };
-
-  const handlePasswordSubmit = async () => {
-    if (!gatePassword.trim()) {
-      setGateError("Bitte geben Sie ein Passwort ein.");
+  useEffect(() => {
+    if (!open) {
       return;
     }
 
-    setIsVerifying(true);
-    setGateError(null);
-
-    try {
-      const response = await fetch("/api/verify-import-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: gatePassword.trim() }),
+    let cancelled = false;
+    fetch("/api/parse-menu")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: QuotaStatus | null) => {
+        if (!cancelled && data && typeof data.remaining === "number") {
+          setQuota(data);
+        }
+      })
+      .catch(() => {
+        // Anzeige bleibt dann einfach leer – die API prüft das Limit ohnehin.
       });
 
-      const data = (await response.json()) as { valid: boolean };
-
-      if (data.valid) {
-        setIsUnlocked(true);
-        setGateOpen(false);
-        setGatePassword("");
-        setGateError(null);
-        setOpen(true);
-      } else {
-        setGateError("Falsches Passwort. Bitte versuchen Sie es erneut.");
-      }
-    } catch {
-      setGateError("Fehler bei der Überprüfung. Bitte versuchen Sie es erneut.");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const visibleWarnings = useMemo(() => warnings.slice(0, 6), [warnings]);
   const selectedPreviewCount = useMemo(
@@ -322,6 +337,8 @@ export function ImportProducts({
       aiPreviewProducts.filter((product) => selectedAiProductIds.has(product.id)).length,
     [aiPreviewProducts, selectedAiProductIds]
   );
+
+  const quotaExhausted = quota !== null && quota.remaining <= 0;
 
   const applyImportResult = (result: ParsedImportResult) => {
     if (result.products.length > 0) {
@@ -424,14 +441,64 @@ export function ImportProducts({
     setSelectedAiProductIds(new Set(aiPreviewProducts.map((product) => product.id)));
   };
 
+  const addAiFiles = (incoming: FileList | File[]) => {
+    const accepted: File[] = [];
+    const rejected: string[] = [];
+
+    Array.from(incoming).forEach((file) => {
+      if (ACCEPTED_FILE_TYPES.has(file.type)) {
+        accepted.push(file);
+      } else {
+        rejected.push(file.name);
+      }
+    });
+
+    if (rejected.length > 0) {
+      setWarnings([
+        `Nicht unterstützte Dateien übersprungen: ${rejected.join(", ")}. Erlaubt sind PNG, JPG, WEBP und PDF.`,
+      ]);
+    }
+
+    if (accepted.length === 0) {
+      return;
+    }
+
+    setAiFiles((previous) => {
+      const seen = new Set(previous.map((file) => `${file.name}:${file.size}`));
+      const merged = [...previous];
+      accepted.forEach((file) => {
+        const key = `${file.name}:${file.size}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(file);
+        }
+      });
+      return merged.slice(0, MAX_AI_FILES);
+    });
+  };
+
+  const removeAiFile = (index: number) => {
+    setAiFiles((previous) => previous.filter((_, fileIndex) => fileIndex !== index));
+  };
+
   const handleAiFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    setAiFile(file);
+    if (event.target.files) {
+      addAiFiles(event.target.files);
+    }
+    event.target.value = "";
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragActive(false);
+    if (event.dataTransfer.files.length > 0) {
+      addAiFiles(event.dataTransfer.files);
+    }
   };
 
   const handleAIAnalyze = async () => {
-    if (!aiTextInput.trim() && !aiFile) {
-      setStatusMessage("Bitte Text eingeben oder eine Bild/PDF-Datei auswählen.");
+    if (!aiTextInput.trim() && aiFiles.length === 0) {
+      setStatusMessage("Bitte Text eingeben oder Bild/PDF-Dateien auswählen.");
       setWarnings([]);
       return;
     }
@@ -441,38 +508,56 @@ export function ImportProducts({
     setWarnings([]);
 
     try {
-      const formData = new FormData();
       const prepWarnings: string[] = [];
+      const extractedTextParts: string[] = [];
+      const imagesToSend: File[] = [];
 
-      if (aiTextInput.trim()) {
-        formData.append("text", aiTextInput.trim());
-      }
+      for (const file of aiFiles) {
+        if (file.type === "application/pdf") {
+          setStatusMessage(`„${file.name}" wird im Browser ausgelesen ...`);
+          const prepared = await extractPdfText(file);
+          const pageCount = prepared.pageCount ?? 1;
 
-      if (aiFile) {
-        if (aiFile.type === "application/pdf") {
-          setStatusMessage("PDF wird im Browser ausgelesen ...");
-          const prepared = await extractPdfText(aiFile);
-          if (prepared.notice) prepWarnings.push(prepared.notice);
-          if (!prepared.text || prepared.text.trim().length === 0) {
-            throw new Error(
-              "Aus diesem PDF konnte kein Text extrahiert werden. Bitte als Bild hochladen oder Text einfügen."
-            );
+          if (prepared.text && isPdfTextSufficient(prepared.text, pageCount)) {
+            if (prepared.notice) prepWarnings.push(prepared.notice);
+            extractedTextParts.push(prepared.text);
+          } else {
+            // Gescanntes PDF: Seiten als Bilder rendern und mitschicken.
+            setStatusMessage(`„${file.name}" ist ein Scan – Seiten werden als Bilder vorbereitet ...`);
+            const rendered = await renderPdfPagesToImages(file);
+            if (rendered.notice) prepWarnings.push(rendered.notice);
+            if (rendered.files.length === 0) {
+              throw new Error(
+                `Aus „${file.name}" konnten weder Text noch Seitenbilder gewonnen werden.`
+              );
+            }
+            imagesToSend.push(...rendered.files);
           }
-          const existingText = aiTextInput.trim();
-          formData.set(
-            "text",
-            existingText ? `${existingText}\n\n${prepared.text}` : prepared.text
-          );
         } else {
-          setStatusMessage("Bild wird vorbereitet ...");
-          const prepared = await prepareImageFile(aiFile);
+          setStatusMessage(`Bild „${file.name}" wird vorbereitet ...`);
+          const prepared = await prepareImageFile(file);
           if (prepared.notice) prepWarnings.push(prepared.notice);
           if (!prepared.file) {
-            throw new Error("Bild konnte nicht vorbereitet werden.");
+            throw new Error(`Bild „${file.name}" konnte nicht vorbereitet werden.`);
           }
-          formData.append("image", prepared.file);
+          imagesToSend.push(prepared.file);
         }
       }
+
+      if (imagesToSend.length > MAX_AI_FILES) {
+        throw new Error(
+          `Maximal ${MAX_AI_FILES} Bilder bzw. PDF-Seiten pro Analyse. Bitte Auswahl reduzieren.`
+        );
+      }
+
+      const formData = new FormData();
+      const combinedText = [aiTextInput.trim(), ...extractedTextParts]
+        .filter(Boolean)
+        .join("\n\n");
+      if (combinedText) {
+        formData.append("text", combinedText);
+      }
+      imagesToSend.forEach((image) => formData.append("images", image));
 
       setStatusMessage("Speisekarte wird analysiert ...");
 
@@ -481,25 +566,35 @@ export function ImportProducts({
         body: formData,
       });
 
+      const data = (await response.json().catch(() => null)) as
+        | ({
+            products?: Array<{
+              name: string;
+              allergens: string[];
+              additives: string[];
+              legalNotices: string[];
+            }>;
+            warnings?: string[];
+            error?: string;
+          } & Partial<QuotaStatus>)
+        | null;
+
+      if (data && typeof data.remaining === "number" && typeof data.limit === "number") {
+        setQuota({
+          limit: data.limit,
+          remaining: data.remaining,
+          resetsAt: data.resetsAt ?? Date.now(),
+        });
+      }
+
       if (!response.ok) {
-        const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(
-          errorPayload?.error?.trim() || "Die Speisekarte konnte nicht analysiert werden."
+          data?.error?.trim() || "Die Speisekarte konnte nicht analysiert werden."
         );
       }
 
-      const data = (await response.json()) as {
-        products?: Array<{
-          name: string;
-          allergens: string[];
-          additives: string[];
-          legalNotices: string[];
-        }>;
-        warnings?: string[];
-      };
-
       const parsedProducts =
-        Array.isArray(data.products) && data.products.length > 0
+        data && Array.isArray(data.products) && data.products.length > 0
           ? data.products
               .map((product) => ({
                 id: crypto.randomUUID(),
@@ -517,7 +612,7 @@ export function ImportProducts({
       setSelectedAiProductIds(new Set(parsedProducts.map((product) => product.id)));
       setWarnings([
         ...prepWarnings,
-        ...(Array.isArray(data.warnings) ? data.warnings : []),
+        ...(data && Array.isArray(data.warnings) ? data.warnings : []),
       ]);
       setStatusMessage(
         parsedProducts.length > 0
@@ -556,7 +651,7 @@ export function ImportProducts({
     setAiPreviewProducts([]);
     setSelectedAiProductIds(new Set());
     setAiTextInput("");
-    setAiFile(null);
+    setAiFiles([]);
   };
 
   const handleCSVFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -630,407 +725,462 @@ export function ImportProducts({
         variant={triggerVariant}
         size={triggerSize}
         className={triggerClassName}
-        onClick={handleTriggerClick}
+        onClick={() => setOpen(true)}
       >
         <Upload className="mr-2 h-4 w-4" />
         {triggerLabel}
       </Button>
-      <Dialog open={gateOpen} onOpenChange={setGateOpen}>
-        <DialogContent className="sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle>Zugang erforderlich</DialogTitle>
-            <DialogDescription>
-              Bitte kontaktieren Sie uns, um dieses Feature vorab nutzen zu können:{" "}
-              <a
-                href="mailto:info@hogaki.de"
-                className="font-medium text-primary underline underline-offset-4"
-              >
-                info@hogaki.de
-              </a>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label htmlFor="import-password">Passwort</Label>
-              <Input
-                id="import-password"
-                type="password"
-                value={gatePassword}
-                onChange={(event) => {
-                  setGatePassword(event.target.value);
-                  setGateError(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void handlePasswordSubmit();
-                  }
-                }}
-                placeholder="Passwort eingeben"
-                disabled={isVerifying}
-              />
-              {gateError && (
-                <p className="text-sm text-destructive">{gateError}</p>
-              )}
-            </div>
-            <Button
-              onClick={() => void handlePasswordSubmit()}
-              disabled={isVerifying || !gatePassword.trim()}
-              className="w-full"
-            >
-              {isVerifying ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Wird überprüft...
-                </>
-              ) : (
-                "Freischalten"
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] w-[95vw] max-w-[95vw] overflow-x-hidden overflow-y-auto sm:max-w-[960px]">
-          <DialogHeader>
-            <DialogTitle>Produkte importieren</DialogTitle>
-            <DialogDescription>
-              Importiere mehrere Produkte als CSV oder per Copy-Paste aus Excel/Google
-              Sheets.
-            </DialogDescription>
-          </DialogHeader>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-y-auto p-6 sm:max-w-3xl"
+        >
+          <SheetHeader className="text-left">
+            <SheetTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Speisekarte importieren
+            </SheetTitle>
+            <SheetDescription>
+              Foto oder PDF der Speisekarte hochladen – die KI erkennt Produkte,
+              Allergene und Zusatzstoffe automatisch.
+            </SheetDescription>
+          </SheetHeader>
+
           <TooltipProvider delayDuration={150}>
-            <Tabs defaultValue="csv" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="csv">CSV-Datei</TabsTrigger>
-                <TabsTrigger value="paste">Einfügen</TabsTrigger>
-                <TabsTrigger value="ai">KI-Import</TabsTrigger>
-              </TabsList>
-              <TabsContent value="csv" className="space-y-3 pt-2">
-                <Label htmlFor="csv-import">
-                  Erwartete Spalten: Name, Allergene, Zusatzstoffe, Pflicht-Hinweise
-                </Label>
-                <Input
-                  id="csv-import"
-                  type="file"
-                  accept=".csv,text/csv"
-                  onChange={handleCSVFileChange}
-                  disabled={isImporting}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Mehrfachwerte in einer Zelle mit Komma, Semikolon oder Pipe trennen (z.
-                  B. A;G oder 1,4).
-                </p>
-              </TabsContent>
-              <TabsContent value="paste" className="space-y-3 pt-2">
-                <Label htmlFor="paste-import">
-                  Zeilenweise einfügen: Name;Allergene;Zusatzstoffe;Pflicht-Hinweise
-                </Label>
-                <Textarea
-                  id="paste-import"
-                  value={pasteInput}
-                  onChange={(event) => setPasteInput(event.target.value)}
-                  placeholder={
-                    "Wiener Schnitzel;A,C,G;2;\nTonic Water;;;H1\nEnergy Drink;;;H7"
+            <div className="mt-4 space-y-4">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    fileInputRef.current?.click();
                   }
-                  className="min-h-[180px]"
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragActive(true);
+                }}
+                onDragLeave={() => setIsDragActive(false)}
+                onDrop={handleDrop}
+                className={cn(
+                  "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-colors",
+                  isDragActive
+                    ? "border-primary bg-primary/5"
+                    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-accent/50"
+                )}
+              >
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <ImageIcon className="h-6 w-6" />
+                  <FileText className="h-6 w-6" />
+                </div>
+                <p className="text-sm font-medium">
+                  Bilder oder PDFs hierher ziehen oder klicken
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  PNG, JPG, WEBP oder PDF – auch mehrseitige Karten und Scans.
+                  Mehrere Dateien möglich.
+                </p>
+                <input
+                  ref={fileInputRef}
+                  id="ai-menu-file"
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp,application/pdf"
+                  onChange={handleAiFileChange}
+                  disabled={isAiAnalyzing}
+                  className="hidden"
                 />
-                <Button onClick={handlePasteImport} disabled={isImporting}>
-                  {isImporting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Importiere...
-                    </>
-                  ) : (
-                    "Text importieren"
-                  )}
-                </Button>
-              </TabsContent>
-              <TabsContent value="ai" className="space-y-4 pt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="ai-menu-text">Speisekarte als Text</Label>
-                  <Textarea
-                    id="ai-menu-text"
-                    value={aiTextInput}
-                    onChange={(event) => setAiTextInput(event.target.value)}
-                    placeholder="z.B. Wiener Schnitzel mit Pommes, Caesar Salad, Spaghetti Carbonara ..."
-                    className="min-h-[120px]"
-                  />
+              </div>
+
+              {aiFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {aiFiles.map((file, index) => (
+                    <span
+                      key={`${file.name}-${file.size}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 py-1 pl-3 pr-1.5 text-xs"
+                    >
+                      {file.type === "application/pdf" ? (
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <span className="max-w-[180px] truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAiFile(index)}
+                        disabled={isAiAnalyzing}
+                        aria-label={`${file.name} entfernen`}
+                        className="rounded-full p-0.5 hover:bg-accent"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ai-menu-file">Oder Bild/PDF hochladen</Label>
-                  <Input
-                    id="ai-menu-file"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,application/pdf"
-                    onChange={handleAiFileChange}
-                    disabled={isAiAnalyzing}
-                  />
-                  {aiFile && (
-                    <p className="text-xs text-muted-foreground">
-                      Ausgewählt: {aiFile.name}
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Text-PDFs (bis ca. 50 MB) werden direkt im Browser ausgelesen,
-                    Bilder werden automatisch komprimiert. Gescannte PDFs bitte als Bild
-                    hochladen oder den Text einfügen.
-                  </p>
-                </div>
-                <Button
-                  onClick={() => void handleAIAnalyze()}
-                  disabled={isAiAnalyzing || (!aiTextInput.trim() && !aiFile)}
-                >
-                  {isAiAnalyzing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Speisekarte wird analysiert...
-                    </>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="ai-menu-text">… oder Speisekarte als Text einfügen</Label>
+                <Textarea
+                  id="ai-menu-text"
+                  value={aiTextInput}
+                  onChange={(event) => setAiTextInput(event.target.value)}
+                  placeholder="z.B. Wiener Schnitzel mit Pommes, Caesar Salad, Spaghetti Carbonara ..."
+                  className="min-h-[90px]"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+                <div className="text-sm">
+                  {quota === null ? (
+                    <span className="text-muted-foreground">
+                      Verfügbare Analysen werden geladen ...
+                    </span>
+                  ) : quotaExhausted ? (
+                    <span className="font-medium text-destructive">
+                      Tageslimit erreicht – ab {formatResetTime(quota.resetsAt)} wieder
+                      verfügbar.
+                    </span>
                   ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Analysieren
-                    </>
+                    <span>
+                      Noch{" "}
+                      <span className="font-semibold">
+                        {quota.remaining} von {quota.limit}
+                      </span>{" "}
+                      KI-Analysen heute verfügbar.
+                    </span>
                   )}
-                </Button>
-
-                {aiPreviewProducts.length > 0 && (
-                  <div className="space-y-3 rounded-md border p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium">
-                        Vorschau: {selectedPreviewCount} von {aiPreviewProducts.length} ausgewählt
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSelectAllPreview(true)}
-                        >
-                          Alle auswählen
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSelectAllPreview(false)}
-                        >
-                          Auswahl leeren
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={handleAiImportSelected}
-                          disabled={selectedPreviewCount === 0}
-                        >
-                          Ausgewählte importieren
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-                      <p className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Legende:</span> Mouseover
-                        auf Code zeigt die Bedeutung.
-                      </p>
-                      <div className="space-y-2 text-xs">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-medium text-muted-foreground">Allergene</span>
-                          {ALLERGEN_OPTIONS.map(([key, label]) => (
-                            <Tooltip key={`legend-allergen-${key}`}>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex min-w-[26px] items-center justify-center rounded-full border bg-background px-2 py-0.5 font-semibold">
-                                  {key.toUpperCase()}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>{`${key.toUpperCase()}: ${label}`}</TooltipContent>
-                            </Tooltip>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-medium text-muted-foreground">Zusatzstoffe</span>
-                          {ADDITIVE_OPTIONS.map(([key, label]) => (
-                            <Tooltip key={`legend-additive-${key}`}>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex min-w-[26px] items-center justify-center rounded-full border bg-background px-2 py-0.5 font-semibold">
-                                  {key}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>{`${key}: ${label}`}</TooltipContent>
-                            </Tooltip>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-medium text-muted-foreground">Pflicht-Hinweise</span>
-                          {LEGAL_NOTICE_OPTIONS.map(([key, label]) => (
-                            <Tooltip key={`legend-legal-notice-${key}`}>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex min-w-[36px] items-center justify-center rounded-full border bg-background px-2 py-0.5 font-semibold">
-                                  {key.toUpperCase()}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>{`${key.toUpperCase()}: ${label}`}</TooltipContent>
-                            </Tooltip>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="max-h-[460px] space-y-2 overflow-y-auto rounded-md border p-2">
-                      {aiPreviewProducts.map((product) => (
-                        <div
-                          key={product.id}
-                          className="space-y-3 rounded-md border bg-card p-3"
-                        >
-                          <div className="flex items-start gap-3">
-                            <Checkbox
-                              checked={selectedAiProductIds.has(product.id)}
-                              onCheckedChange={(checked) =>
-                                toggleAiSelection(product.id, checked === true)
-                              }
-                              aria-label={`Produkt ${product.name} auswählen`}
-                              className="mt-2.5 shrink-0"
-                            />
-                            <div className="min-w-0 flex-1 space-y-1">
-                              <Label
-                                htmlFor={`ai-product-name-${product.id}`}
-                                className="text-[11px] uppercase tracking-wide text-muted-foreground"
-                              >
-                                Name
-                              </Label>
-                              <Input
-                                id={`ai-product-name-${product.id}`}
-                                value={product.name}
-                                onChange={(event) =>
-                                  updateAiProductName(product.id, event.target.value)
-                                }
-                                placeholder="Produktname"
-                              />
-                            </div>
-                          </div>
-                          <div className="grid gap-3 md:grid-cols-3">
-                            <div className="space-y-2">
-                              <p className="text-xs font-medium">Allergene</p>
-                              <p className="text-[11px] text-muted-foreground">
-                                Ausgewählt:{" "}
-                                {summarizeSelection(
-                                  product.allergens,
-                                  ALLERGEN_LABELS,
-                                  (value) => value.toUpperCase()
-                                )}
-                              </p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {ALLERGEN_OPTIONS.map(([key, label]) => {
-                                  const isActive = product.allergens.includes(key);
-                                  return (
-                                    <button
-                                      key={key}
-                                      type="button"
-                                      className={cn(
-                                        "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
-                                        isActive
-                                          ? "border-primary bg-primary text-primary-foreground"
-                                          : "border-input text-muted-foreground hover:bg-accent"
-                                      )}
-                                      onClick={() => toggleAiAllergen(product.id, key)}
-                                      title={`${key.toUpperCase()}: ${label}`}
-                                      aria-label={`${key.toUpperCase()}: ${label}`}
-                                    >
-                                      {key.toUpperCase()}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-xs font-medium">Zusatzstoffe</p>
-                              <p className="text-[11px] text-muted-foreground">
-                                Ausgewählt:{" "}
-                                {summarizeSelection(product.additives, ADDITIVE_LABELS)}
-                              </p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {ADDITIVE_OPTIONS.map(([key, label]) => {
-                                  const isActive = product.additives.includes(key);
-                                  return (
-                                    <button
-                                      key={key}
-                                      type="button"
-                                      className={cn(
-                                        "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
-                                        isActive
-                                          ? "border-primary bg-primary text-primary-foreground"
-                                          : "border-input text-muted-foreground hover:bg-accent"
-                                      )}
-                                      onClick={() => toggleAiAdditive(product.id, key)}
-                                      title={`${key}: ${label}`}
-                                      aria-label={`${key}: ${label}`}
-                                    >
-                                      {key}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-xs font-medium">Pflicht-Hinweise</p>
-                              <p className="text-[11px] text-muted-foreground">
-                                Ausgewählt:{" "}
-                                {summarizeSelection(
-                                  product.legalNotices,
-                                  LEGAL_NOTICE_LABELS,
-                                  (value) => value.toUpperCase()
-                                )}
-                              </p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {LEGAL_NOTICE_OPTIONS.map(([key, label]) => {
-                                  const isActive = product.legalNotices.includes(key);
-                                  return (
-                                    <button
-                                      key={key}
-                                      type="button"
-                                      className={cn(
-                                        "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
-                                        isActive
-                                          ? "border-primary bg-primary text-primary-foreground"
-                                          : "border-input text-muted-foreground hover:bg-accent"
-                                      )}
-                                      onClick={() => toggleAiLegalNotice(product.id, key)}
-                                      title={`${key.toUpperCase()}: ${label}`}
-                                      aria-label={`${key.toUpperCase()}: ${label}`}
-                                    >
-                                      {key.toUpperCase()}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                </div>
+                {quota !== null && (
+                  <div className="flex items-center gap-1.5" aria-hidden="true">
+                    {Array.from({ length: quota.limit }, (_, index) => (
+                      <span
+                        key={index}
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-full",
+                          index < quota.remaining ? "bg-primary" : "bg-muted-foreground/25"
+                        )}
+                      />
+                    ))}
                   </div>
                 )}
-              </TabsContent>
-            </Tabs>
-          </TooltipProvider>
+              </div>
 
-          {statusMessage && (
-            <p className="text-sm font-medium text-foreground" aria-live="polite">
-              {statusMessage}
-            </p>
-          )}
+              <Button
+                onClick={() => void handleAIAnalyze()}
+                disabled={
+                  isAiAnalyzing ||
+                  quotaExhausted ||
+                  (!aiTextInput.trim() && aiFiles.length === 0)
+                }
+                className="w-full"
+                size="lg"
+              >
+                {isAiAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Speisekarte wird analysiert...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Mit KI analysieren
+                  </>
+                )}
+              </Button>
 
-          {visibleWarnings.length > 0 && (
-            <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              {visibleWarnings.map((warning) => (
-                <p key={warning}>{warning}</p>
-              ))}
-              {warnings.length > visibleWarnings.length && (
-                <p>... und {warnings.length - visibleWarnings.length} weitere Hinweise.</p>
+              {statusMessage && (
+                <p className="text-sm font-medium text-foreground" aria-live="polite">
+                  {statusMessage}
+                </p>
               )}
+
+              {visibleWarnings.length > 0 && (
+                <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  {visibleWarnings.map((warning) => (
+                    <p key={warning}>{warning}</p>
+                  ))}
+                  {warnings.length > visibleWarnings.length && (
+                    <p>... und {warnings.length - visibleWarnings.length} weitere Hinweise.</p>
+                  )}
+                </div>
+              )}
+
+              {aiPreviewProducts.length > 0 && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium">
+                      Vorschau: {selectedPreviewCount} von {aiPreviewProducts.length} ausgewählt
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSelectAllPreview(true)}
+                      >
+                        Alle auswählen
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSelectAllPreview(false)}
+                      >
+                        Auswahl leeren
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleAiImportSelected}
+                        disabled={selectedPreviewCount === 0}
+                      >
+                        Ausgewählte importieren
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Legende:</span> Mouseover
+                      auf Code zeigt die Bedeutung.
+                    </p>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium text-muted-foreground">Allergene</span>
+                        {ALLERGEN_OPTIONS.map(([key, label]) => (
+                          <Tooltip key={`legend-allergen-${key}`}>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex min-w-[26px] items-center justify-center rounded-full border bg-background px-2 py-0.5 font-semibold">
+                                {key.toUpperCase()}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>{`${key.toUpperCase()}: ${label}`}</TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium text-muted-foreground">Zusatzstoffe</span>
+                        {ADDITIVE_OPTIONS.map(([key, label]) => (
+                          <Tooltip key={`legend-additive-${key}`}>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex min-w-[26px] items-center justify-center rounded-full border bg-background px-2 py-0.5 font-semibold">
+                                {key}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>{`${key}: ${label}`}</TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium text-muted-foreground">Pflicht-Hinweise</span>
+                        {LEGAL_NOTICE_OPTIONS.map(([key, label]) => (
+                          <Tooltip key={`legend-legal-notice-${key}`}>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex min-w-[36px] items-center justify-center rounded-full border bg-background px-2 py-0.5 font-semibold">
+                                {key.toUpperCase()}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>{`${key.toUpperCase()}: ${label}`}</TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[460px] space-y-2 overflow-y-auto rounded-md border p-2">
+                    {aiPreviewProducts.map((product) => (
+                      <div
+                        key={product.id}
+                        className="space-y-3 rounded-md border bg-card p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={selectedAiProductIds.has(product.id)}
+                            onCheckedChange={(checked) =>
+                              toggleAiSelection(product.id, checked === true)
+                            }
+                            aria-label={`Produkt ${product.name} auswählen`}
+                            className="mt-2.5 shrink-0"
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <Label
+                              htmlFor={`ai-product-name-${product.id}`}
+                              className="text-[11px] uppercase tracking-wide text-muted-foreground"
+                            >
+                              Name
+                            </Label>
+                            <Input
+                              id={`ai-product-name-${product.id}`}
+                              value={product.name}
+                              onChange={(event) =>
+                                updateAiProductName(product.id, event.target.value)
+                              }
+                              placeholder="Produktname"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium">Allergene</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Ausgewählt:{" "}
+                              {summarizeSelection(
+                                product.allergens,
+                                ALLERGEN_LABELS,
+                                (value) => value.toUpperCase()
+                              )}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {ALLERGEN_OPTIONS.map(([key, label]) => {
+                                const isActive = product.allergens.includes(key);
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    className={cn(
+                                      "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
+                                      isActive
+                                        ? "border-primary bg-primary text-primary-foreground"
+                                        : "border-input text-muted-foreground hover:bg-accent"
+                                    )}
+                                    onClick={() => toggleAiAllergen(product.id, key)}
+                                    title={`${key.toUpperCase()}: ${label}`}
+                                    aria-label={`${key.toUpperCase()}: ${label}`}
+                                  >
+                                    {key.toUpperCase()}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium">Zusatzstoffe</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Ausgewählt:{" "}
+                              {summarizeSelection(product.additives, ADDITIVE_LABELS)}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {ADDITIVE_OPTIONS.map(([key, label]) => {
+                                const isActive = product.additives.includes(key);
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    className={cn(
+                                      "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
+                                      isActive
+                                        ? "border-primary bg-primary text-primary-foreground"
+                                        : "border-input text-muted-foreground hover:bg-accent"
+                                    )}
+                                    onClick={() => toggleAiAdditive(product.id, key)}
+                                    title={`${key}: ${label}`}
+                                    aria-label={`${key}: ${label}`}
+                                  >
+                                    {key}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium">Pflicht-Hinweise</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Ausgewählt:{" "}
+                              {summarizeSelection(
+                                product.legalNotices,
+                                LEGAL_NOTICE_LABELS,
+                                (value) => value.toUpperCase()
+                              )}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {LEGAL_NOTICE_OPTIONS.map(([key, label]) => {
+                                const isActive = product.legalNotices.includes(key);
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    className={cn(
+                                      "rounded-full border px-2 py-1 text-[11px] font-medium leading-none transition-colors",
+                                      isActive
+                                        ? "border-primary bg-primary text-primary-foreground"
+                                        : "border-input text-muted-foreground hover:bg-accent"
+                                    )}
+                                    onClick={() => toggleAiLegalNotice(product.id, key)}
+                                    title={`${key.toUpperCase()}: ${label}`}
+                                    aria-label={`${key.toUpperCase()}: ${label}`}
+                                  >
+                                    {key.toUpperCase()}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="csv">
+                  <AccordionTrigger className="text-sm">
+                    CSV-Datei importieren
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 pt-1">
+                    <Label htmlFor="csv-import">
+                      Erwartete Spalten: Name, Allergene, Zusatzstoffe, Pflicht-Hinweise
+                    </Label>
+                    <Input
+                      id="csv-import"
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleCSVFileChange}
+                      disabled={isImporting}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Mehrfachwerte in einer Zelle mit Komma, Semikolon oder Pipe trennen (z.
+                      B. A;G oder 1,4).
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="paste">
+                  <AccordionTrigger className="text-sm">
+                    Aus Excel/Google Sheets einfügen
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 pt-1">
+                    <Label htmlFor="paste-import">
+                      Zeilenweise einfügen: Name;Allergene;Zusatzstoffe;Pflicht-Hinweise
+                    </Label>
+                    <Textarea
+                      id="paste-import"
+                      value={pasteInput}
+                      onChange={(event) => setPasteInput(event.target.value)}
+                      placeholder={
+                        "Wiener Schnitzel;A,C,G;2;\nTonic Water;;;H1\nEnergy Drink;;;H7"
+                      }
+                      className="min-h-[180px]"
+                    />
+                    <Button onClick={handlePasteImport} disabled={isImporting}>
+                      {isImporting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Importiere...
+                        </>
+                      ) : (
+                        "Text importieren"
+                      )}
+                    </Button>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </TooltipProvider>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

@@ -432,8 +432,8 @@ export default function Home() {
                       Speisekarte importieren statt alles manuell einzugeben
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      CSV, Copy-Paste oder KI-Import mit Bild/PDF. So sind viele Produkte in wenigen
-                      Minuten erfasst.
+                      Foto oder PDF hochladen – die KI erkennt Produkte, Allergene und
+                      Zusatzstoffe. Alternativ per CSV oder Copy-Paste.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

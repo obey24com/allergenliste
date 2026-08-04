@@ -11,6 +11,14 @@ export interface PreparedUpload {
   originalSizeBytes: number;
   finalSizeBytes: number;
   notice?: string;
+  pageCount?: number;
+}
+
+export interface RenderedPdfPages {
+  files: File[];
+  pageCount: number;
+  renderedPages: number;
+  notice?: string;
 }
 
 const blobToFile = (blob: Blob, originalName: string, type: string) => {
@@ -127,6 +135,83 @@ export async function extractPdfText(file: File): Promise<PreparedUpload> {
       originalSizeBytes: file.size,
       finalSizeBytes: new Blob([fullText]).size,
       notice: `PDF wurde im Browser ausgelesen (${(file.size / 1024 / 1024).toFixed(1)} MB \u2192 Text).`,
+      pageCount: pdf.numPages,
+    };
+  } finally {
+    await pdf.destroy();
+  }
+}
+
+// Gescannte PDFs enthalten kaum extrahierbaren Text; dann rendern wir die
+// Seiten als Bilder und lassen sie direkt von der Vision-Analyse auslesen.
+export const isPdfTextSufficient = (text: string, pageCount: number) => {
+  const trimmed = text.trim();
+  return trimmed.length >= 200 && trimmed.length / Math.max(1, pageCount) >= 50;
+};
+
+export const MAX_PDF_RENDER_PAGES = 10;
+const PDF_RENDER_TARGET_PX = 2000;
+
+export async function renderPdfPagesToImages(
+  file: File,
+  maxPages: number = MAX_PDF_RENDER_PAGES
+): Promise<RenderedPdfPages> {
+  const pdfjs = await loadPdfJs();
+  const data = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = pdfjs.getDocument({
+    data,
+    isEvalSupported: false,
+    useSystemFonts: false,
+  });
+  const pdf = await loadingTask.promise;
+
+  try {
+    const pagesToRender = Math.min(pdf.numPages, maxPages);
+    const files: File[] = [];
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+
+    for (let pageNumber = 1; pageNumber <= pagesToRender; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(
+        3,
+        PDF_RENDER_TARGET_PX / Math.max(baseViewport.width, baseViewport.height)
+      );
+      const viewport = page.getViewport({ scale: Math.max(1, scale) });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Canvas-Kontext konnte nicht erstellt werden.");
+      }
+
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+      const blob = await canvasToBlob(canvas, "image/jpeg", 0.85);
+      if (!blob) {
+        throw new Error(`PDF-Seite ${pageNumber} konnte nicht gerendert werden.`);
+      }
+
+      const pageFile = new File([blob], `${baseName}-seite-${pageNumber}.jpg`, {
+        type: "image/jpeg",
+      });
+      // \u00dcber der Upload-Grenze? Bestehende Kompression wiederverwenden.
+      const prepared = await prepareImageFile(pageFile);
+      if (prepared.file) {
+        files.push(prepared.file);
+      }
+    }
+
+    return {
+      files,
+      pageCount: pdf.numPages,
+      renderedPages: pagesToRender,
+      notice:
+        pdf.numPages > pagesToRender
+          ? `PDF hat ${pdf.numPages} Seiten \u2013 nur die ersten ${pagesToRender} wurden analysiert.`
+          : undefined,
     };
   } finally {
     await pdf.destroy();
