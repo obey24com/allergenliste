@@ -489,7 +489,8 @@ export default function Home() {
                   isReorderEnabled={!hasActiveFilters}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Ihre Daten werden lokal im Browser gespeichert.
+                  Ihre Daten werden lokal im Browser gespeichert. Kennzeichnungen aus dem
+                  KI-Import sind KI-generiert – bitte vor Veröffentlichung prüfen.
                 </p>
               </div>
             </div>

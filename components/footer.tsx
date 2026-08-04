@@ -51,7 +51,7 @@ export function Footer() {
           >
             AGBs
           </a>
-          <a 
+          <a
             href="mailto:allergenfeedback@obey24.com"
             className="flex items-center gap-1 hover:text-primary transition-colors"
           >
@@ -59,6 +59,12 @@ export function Footer() {
             Feedback
           </a>
         </nav>
+      </div>
+      <div className="container max-w-5xl mx-auto px-4 pb-3">
+        <p className="text-center text-xs text-muted-foreground/70">
+          Allergen- und Zusatzstoff-Kennzeichnungen können KI-generiert sein – bitte
+          prüfen Sie alle Angaben vor Veröffentlichung.
+        </p>
       </div>
     </footer>
   );
